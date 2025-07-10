@@ -23,6 +23,8 @@ CONFIG_UI_FG2       :: "EBDBB2FF"
 CONFIG_UI_CODE      :: "B8BB26FF"
 CONFIG_UI_BLUE      :: "458588FF"
 
+// formatter
+CONFIG_SET_THE_CHILDREN_STRAIGHT :: true
 
 
 // ===================================

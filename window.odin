@@ -174,6 +174,7 @@ render_frame :: proc() {
     bar  = colorscheme[.BG2]
     sdl.SetRenderDrawColor(window.renderer, bar.r, bar.g, bar.b, bar.a)
     sdl.RenderFillRect(window.renderer, &{ 0, 0, window.size.x, window.toolbar_h })
+
     
 }
 
@@ -207,8 +208,8 @@ cache_body :: proc(data: [] byte, header: ^Header) {
         return sdl.CreateTextureFromSurface(window.renderer, surface), { surface.w, surface.h }
     }
 
-    place_text :: proc(pos: ^Vector, str: string, type: TextType) {
-        assert(str != "")
+    place_text :: proc(pos: ^Vector, str: string, type: TextType, caller := #caller_location) {
+        fmt.assertf(str != "", "called from: %v\n", caller)
         texture : Texture
         size    : Vector
         element : TextBox
@@ -231,8 +232,6 @@ cache_body :: proc(data: [] byte, header: ^Header) {
     // === STATE TO BE MODIFIED ===
     pos : Vector = { window.sidebar_w + 10, window.toolbar_h + 10 }
 
-
-
     the_package: Package
     for i in 0..<header.pkgs.length {
         p := doc.from_array(&header.base, header.pkgs)[i]
@@ -253,7 +252,7 @@ cache_body :: proc(data: [] byte, header: ^Header) {
         declaration := entities[entry.entity]
         if is_any_kind(declaration .kind, .Type_Name) {
             code := fmt.aprint(to_string(data, declaration.name), "::", to_string(data, declaration.init_string), allocator = context.temp_allocator)
-            place_text(&pos, code, .CODE_BLOCK)
+            place_text(&pos, format_code_block(header, declaration), .CODE_BLOCK)
 
             if declaration.docs.length != 0 {
                 place_text(&pos, to_string(data, declaration.docs), .PARAGRAPH)
@@ -261,7 +260,6 @@ cache_body :: proc(data: [] byte, header: ^Header) {
         }
     }
     
-
 }
 
 //   // caches all of the text for the main documentation body.
