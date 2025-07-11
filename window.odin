@@ -109,7 +109,7 @@ initialize_window :: proc() {// {{{
     window.sidebar_w = 256
 
     sdl.GetWindowSize(window.handle, &window.size.x, &window.size.y)
-    cache_body(read_documentation_file("cache/core@net.odin-doc"))
+    cache_body(read_documentation_file("cache/core@os.odin-doc"))
     cache_sidebar()
 
 
@@ -164,7 +164,7 @@ render_frame :: proc() {
         sdl.RenderCopy(window.renderer, tex, 
             &{ 0, 0, size.x, size.y }, &{ pos.x, pos.y + offset_y, size.x, size.y })
 
-        if intersects(window.mouse, element.pos, element.size) &&
+        if intersects(window.mouse - { 0, offset_y }, element.pos, element.size) &&
            window.events.click == .LEFT &&
            element.click != nil { element.click(&element) }
     }
@@ -191,7 +191,7 @@ cache_body :: proc(data: [] byte, header: ^Header) {
     }
 
     cache_text :: proc(str: string, type: TextType) -> (texture: Texture, size: Vector) {// {{{
-        text :: ttf.RenderText_Blended_Wrapped
+        text :: ttf.RenderUTF8_Blended_Wrapped
         cstr :: strings.clone_to_cstring        // TODO I can now replace with fast_str_to_cstr
                                                 // OR later replace with custom RenderText
         font  := fonts.regular
@@ -199,10 +199,16 @@ cache_body :: proc(data: [] byte, header: ^Header) {
         switch type {
         case .HEADING   : font = fonts.large;   color = colorscheme[.FG1]
         case .PARAGRAPH :                       color = colorscheme[.FG1]
-        case .CODE_BLOCK: font = fonts.mono;    color = colorscheme[.CODE]
+        case .CODE_BLOCK: font = fonts.mono;    color = { 255, 255, 255, 255 } // colorscheme[.CODE]
         case .HYPERLINK :                       color = colorscheme[.BLUE]
         }
         
+        if type == .CODE_BLOCK {
+            s := cache_code_block(str)
+            defer  sdl.FreeSurface(s)
+            return sdl.CreateTextureFromSurface(window.renderer, s), { s.w, s.h }
+        }
+
         surface := text(font, cstr(str, context.temp_allocator), color, u32(window.size.x - window.sidebar_w))
         defer  sdl.FreeSurface(surface)
         return sdl.CreateTextureFromSurface(window.renderer, surface), { surface.w, surface.h }
@@ -248,10 +254,34 @@ cache_body :: proc(data: [] byte, header: ^Header) {
 
     entities := doc.from_array(&header.base, header.entities)
     entries := doc.from_array(&header.base, the_package.entries)
+
     for entry in entries {
         declaration := entities[entry.entity]
         if is_any_kind(declaration .kind, .Type_Name) {
-            code := fmt.aprint(to_string(data, declaration.name), "::", to_string(data, declaration.init_string), allocator = context.temp_allocator)
+            code := fmt.aprint(
+                      to_string(data, declaration.name), 
+                      "::", 
+                      to_string(data, declaration.init_string), 
+                      allocator = context.temp_allocator)
+
+            place_text(&pos, format_code_block(header, declaration), .CODE_BLOCK)
+
+            if declaration.docs.length != 0 {
+                place_text(&pos, to_string(data, declaration.docs), .PARAGRAPH)
+            }
+        }
+    }
+
+
+    for entry in entries {
+        declaration := entities[entry.entity]
+        if is_any_kind(declaration .kind, .Procedure) {
+            code := fmt.aprint(
+                      to_string(data, declaration.name), 
+                      "::", 
+                      to_string(data, declaration.init_string), 
+                      allocator = context.temp_allocator)
+
             place_text(&pos, format_code_block(header, declaration), .CODE_BLOCK)
 
             if declaration.docs.length != 0 {
@@ -260,6 +290,58 @@ cache_body :: proc(data: [] byte, header: ^Header) {
         }
     }
     
+    for entry in entries {
+        declaration := entities[entry.entity]
+        if is_any_kind(declaration .kind, .Proc_Group) {
+            code := fmt.aprint(
+                      to_string(data, declaration.name), 
+                      "::", 
+                      to_string(data, declaration.init_string), 
+                      allocator = context.temp_allocator)
+
+            place_text(&pos, format_code_block(header, declaration), .CODE_BLOCK)
+
+            if declaration.docs.length != 0 {
+                place_text(&pos, to_string(data, declaration.docs), .PARAGRAPH)
+            }
+        }
+    }
+
+    for entry in entries {
+        declaration := entities[entry.entity]
+        if is_any_kind(declaration .kind, .Constant) {
+            code := fmt.aprint(
+                      to_string(data, declaration.name), 
+                      "::", 
+                      to_string(data, declaration.init_string), 
+                      allocator = context.temp_allocator)
+
+            place_text(&pos, format_code_block(header, declaration), .CODE_BLOCK)
+
+            if declaration.docs.length != 0 {
+                place_text(&pos, to_string(data, declaration.docs), .PARAGRAPH)
+            }
+        }
+    }
+
+    for entry in entries {
+        declaration := entities[entry.entity]
+        if is_any_kind(declaration .kind, .Variable) {
+            code := fmt.aprint(
+                      to_string(data, declaration.name), 
+                      "::", 
+                      to_string(data, declaration.init_string), 
+                      allocator = context.temp_allocator)
+
+            place_text(&pos, format_code_block(header, declaration), .CODE_BLOCK)
+
+            if declaration.docs.length != 0 {
+                place_text(&pos, to_string(data, declaration.docs), .PARAGRAPH)
+            }
+        }
+    }
+
+
 }
 
 //   // caches all of the text for the main documentation body.

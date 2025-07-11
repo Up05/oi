@@ -7,6 +7,14 @@ intersects :: proc(a: Vector, b: Vector, b_size: Vector) -> bool {
 }
 
 
+proper_to_rgba :: proc(hex: u32) -> RGBA {
+    r : u8 = u8( (hex & 0xFF000000) >> 24 )
+    g : u8 = u8( (hex & 0x00FF0000) >> 16 )
+    b : u8 = u8( (hex & 0x0000FF00) >>  8 )
+    a : u8 = u8( (hex & 0x000000FF) )
+    return { r, g, b, a }
+}
+
 to_rgba :: proc(hex: string) -> RGBA {
     to_digit :: proc(ch: byte) -> byte {
         return (ch - 'a' + 10) if ch >= 'a' else (ch - 'A' + 10) if ch >= 'A' else ch - '0'

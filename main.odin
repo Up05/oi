@@ -23,8 +23,21 @@ CONFIG_UI_FG2       :: "EBDBB2FF"
 CONFIG_UI_CODE      :: "B8BB26FF"
 CONFIG_UI_BLUE      :: "458588FF"
 
+CONFIG_CODE_SYMBOL    : u32 : 0xFFFF00FF
+CONFIG_CODE_KEYWORD   : u32 : 0xFF0000FF
+CONFIG_CODE_NAME      : u32 : 0x77FFBBFF
+CONFIG_CODE_DIRECTIVE : u32 : 0x7700FFFF
+CONFIG_CODE_STRING    : u32 : 0x770000FF
+CONFIG_CODE_NUMBER    : u32 : 0xCC00CCFF
+
 // formatter
 CONFIG_SET_THE_CHILDREN_STRAIGHT :: true
+
+CONFIG_CODE_LINE_SPACING :: 2
+
+// How many characters before procedure arguments   example :: proc(arg1: int, arg2: string) ...
+// get broken up into different lines
+CONFIG_WHAT_IS_LONG_PROC :: 50
 
 
 // ===================================
