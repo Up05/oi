@@ -8,6 +8,7 @@ import os "core:os/os2"
 import sdl "vendor:sdl2"
 import "vendor:sdl2/ttf"
 import doc "core:odin/doc-format"
+import docl "doc-loader"
 
 // 1 level of indirection from SDL, 
 // just in case I want to change it back to Raylib or smth
@@ -33,14 +34,21 @@ Color :: enum {
 
 Vector :: [2] i32
 
-TextType :: enum { HEADING, PARAGRAPH, CODE_BLOCK, HYPERLINK }
+
+HyperLink :: struct {
+    pos    : Vector,
+    size   : Vector,
+    target : ^docl.Entity,
+}
+
+TextType :: enum { HEADING, PARAGRAPH, CODE_BLOCK }
 TextBox  :: struct {
     pos   : Vector,
     size  : Vector,
     tex   : Texture,
     text  : string,
     type  : TextType,
-    links : [] Button
+    links : [] HyperLink,
 }
 
 ClickEvent :: proc(target: ^Button) -> bool
@@ -52,6 +60,12 @@ Button   :: struct {
     click : ClickEvent,
 
     userdata : rawptr,
+}
+
+Scroll :: struct {
+    pos : i32, 
+    vel : f32,
+    max : i32,
 }
 
 // ===== GLOBAL STATE ======
@@ -72,8 +86,8 @@ window : struct {
     toolbar_h : i32, // maybe more "navbar" buf "nav" is 3 symbols.
     sidebar_w : i32, // yup... just toolbar_height... in pixels...
 
-    content_scroll : struct { pos: i32, vel: f32 }, 
-    sidebar_scroll : struct { pos: i32, vel: f32 }, 
+    content_scroll : Scroll, // scroll is negative!!! 
+    sidebar_scroll : Scroll, // .pos can never be positive
 }
 
 fonts : struct {
@@ -85,6 +99,9 @@ fonts : struct {
 cache : struct {
     body    : [dynamic] TextBox,
     sidebar : [dynamic] Button,
+    
+    //              ent.name pos.y
+    positions : map [string] i32
 }
 
 initialize_window :: proc() {// {{{
@@ -109,7 +126,11 @@ initialize_window :: proc() {// {{{
     window.sidebar_w = 256
 
     sdl.GetWindowSize(window.handle, &window.size.x, &window.size.y)
-    cache_body(read_documentation_file("cache/core@os.odin-doc"))
+
+    everything, ok := docl.load("cache/core@os.odin-doc")
+    assert(ok)
+    cache_body(everything)
+
     cache_sidebar()
 
 
@@ -123,10 +144,33 @@ handle_resize :: proc() {
 }
 
 
-render_frame :: proc() {
+render_scrollbar :: proc(pos: Vector, scroll: ^Scroll) {
+    bg := colorscheme[Color.BG3]
+    fg := colorscheme[Color.FG2]
+
+    w := i32(CONFIG_SCROLLBAR_WIDTH)
+    h := window.size.y - pos.y
+
+    sdl.SetRenderDrawColor(window.renderer, bg.r, bg.g, bg.b, 255)
+    sdl.RenderFillRect(window.renderer, &{ pos.x, pos.y, w, h })
+    
+    fraction := f32(-scroll.pos) / f32(scroll.max)
+    y2 := i32(f32(h) * fraction) + pos.y
+    h2 := i32(f32(h) * f32(h)/f32(scroll.max))
+    
+    sdl.SetRenderDrawColor(window.renderer, fg.r, fg.g, fg.b, 255)
+    sdl.RenderFillRect(window.renderer, &{ pos.x, y2, w, h2 })
+
+    if window.events.click == .LEFT && intersects(window.mouse, pos, { w, h }) {
+        scroll.pos = -i32( f32(window.mouse.y - pos.y - h2/2)/f32(h) / (1/f32(scroll.max)) )
+    }
+
+}
+
+render_frame :: proc() {// {{{
     sdl.GetMouseState(&window.mouse.x, &window.mouse.y)
 
-    apply_scroll :: proc(scroll: ^struct { pos: i32, vel: f32 }) {
+    apply_scroll :: proc(scroll: ^Scroll) {
         scroll.vel += f32(window.events.scroll.y * 15)
         scroll.pos += i32(scroll.vel)
         scroll.pos  = min(scroll.pos, 0)
@@ -142,6 +186,10 @@ render_frame :: proc() {
 
     // ============================= CONTENT ============================= 
 
+
+    underline    := colorscheme[Color.BLUE]
+
+    sdl.SetRenderDrawColor(window.renderer, underline.r, underline.g, underline.b, 255)
     for element in cache.body {
         offset_y := window.content_scroll.pos
 
@@ -149,7 +197,21 @@ render_frame :: proc() {
         sdl.RenderCopy(window.renderer, tex, 
             &{ 0, 0, size.x, size.y }, &{ pos.x, pos.y + offset_y, size.x, size.y })
 
+        for link in element.links {
+            y := link.pos.y + offset_y
+            sdl.RenderDrawLine(window.renderer, 
+                link.pos.x, y + link.size.y, link.pos.x + link.size.x, y + link.size.y)
+
+            if window.events.click == .LEFT &&
+               intersects(window.mouse, { link.pos.x, y }, link.size) {
+                window.content_scroll.pos, _ = cache.positions[link.target.name]
+                window.content_scroll.pos -= 50
+                window.content_scroll.pos *= -1
+            }
+        }
     }
+
+    render_scrollbar({ window.size.x - CONFIG_SCROLLBAR_WIDTH, window.toolbar_h }, &window.content_scroll)
 
     // ============================= SIDEBAR ============================= 
 
@@ -176,21 +238,22 @@ render_frame :: proc() {
     sdl.RenderFillRect(window.renderer, &{ 0, 0, window.size.x, window.toolbar_h })
 
     
-}
+}// }}}
 
-cache_body :: proc(data: [] byte, header: ^Header) {
+cache_body :: proc(everything: docl.Everything) {
+    when MEASURE_PERFORMANCE {
+        __start := tick_now() 
+        defer fperf[#location().procedure] += tick_diff(__start, tick_now())
+    }    
+    
     is_any_kind :: proc(a: doc.Entity_Kind, b: ..doc.Entity_Kind) -> bool { return is_any(a, ..b) }
 
-    // same as doc.from_string, oops
-    to_string :: proc(data: [] byte, raw: doc.String) -> string {
-        return transmute(string)( 
-            runtime.Raw_String { 
-                data = transmute([^] u8) (transmute(u64)(raw_data(data)) + u64(raw.offset)), 
-                len  = int(raw.length) 
-            })
-    }
+    cache_text :: proc(everything: docl.Everything, str: string, type: TextType) -> (texture: Texture, size: Vector, links: [] HyperLink) {// {{{
+        when MEASURE_PERFORMANCE {
+            __start := tick_now() 
+            defer fperf[#location().procedure] += tick_diff(__start, tick_now())
+        }
 
-    cache_text :: proc(str: string, type: TextType) -> (texture: Texture, size: Vector) {// {{{
         text :: ttf.RenderUTF8_Blended_Wrapped
         cstr :: strings.clone_to_cstring        // TODO I can now replace with fast_str_to_cstr
                                                 // OR later replace with custom RenderText
@@ -200,35 +263,55 @@ cache_body :: proc(data: [] byte, header: ^Header) {
         case .HEADING   : font = fonts.large;   color = colorscheme[.FG1]
         case .PARAGRAPH :                       color = colorscheme[.FG1]
         case .CODE_BLOCK: font = fonts.mono;    color = { 255, 255, 255, 255 } // colorscheme[.CODE]
-        case .HYPERLINK :                       color = colorscheme[.BLUE]
         }
         
         if type == .CODE_BLOCK {
-            s := cache_code_block(str)
+            s, links := cache_code_block(everything, str)
             defer  sdl.FreeSurface(s)
-            return sdl.CreateTextureFromSurface(window.renderer, s), { s.w, s.h }
+            return sdl.CreateTextureFromSurface(window.renderer, s), { s.w, s.h }, links
         }
 
         surface := text(font, cstr(str, context.temp_allocator), color, u32(window.size.x - window.sidebar_w))
         defer  sdl.FreeSurface(surface)
-        return sdl.CreateTextureFromSurface(window.renderer, surface), { surface.w, surface.h }
+        return sdl.CreateTextureFromSurface(window.renderer, surface), { surface.w, surface.h }, {}
     }
 
-    place_text :: proc(pos: ^Vector, str: string, type: TextType, caller := #caller_location) {
+    place_text :: proc(
+        everything: docl.Everything,
+        pos: ^Vector, str: string, type: TextType, 
+        entity: ^docl.Entity = nil, 
+        caller := #caller_location) {
+
+        when MEASURE_PERFORMANCE {
+            __start := tick_now() 
+            defer fperf[#location().procedure] += tick_diff(__start, tick_now())
+        }
         fmt.assertf(str != "", "called from: %v\n", caller)
         texture : Texture
         size    : Vector
         element : TextBox
+        links   : [] HyperLink
         
-        texture, size = cache_text(str, type)
+        texture, size, links = cache_text(everything, str, type)
         defer  pos.y += size.y + 4
 
-        element.pos  = pos^
-        element.size = size
-        element.tex  = texture
-        element.text = str
-        element.type = type
-        // links maybe later?
+        element.pos   = pos^
+        element.size  = size
+        element.tex   = texture
+        element.text  = str
+        element.type  = type
+        element.links = links
+
+        for &link in links {
+            link.pos += element.pos
+        }
+
+        if entity != nil {
+            cache.positions[entity.name] = pos.y
+        }
+
+        window.content_scroll.max = pos.y + size.y
+        
         append(&cache.body, element)
 
     }// }}}
@@ -238,199 +321,56 @@ cache_body :: proc(data: [] byte, header: ^Header) {
     // === STATE TO BE MODIFIED ===
     pos : Vector = { window.sidebar_w + 10, window.toolbar_h + 10 }
 
-    the_package: Package
-    for i in 0..<header.pkgs.length {
-        p := doc.from_array(&header.base, header.pkgs)[i]
-        if .Init in p.flags do the_package = p
+    the_package := everything.initial_package
+
+    place_text(everything, &pos, the_package.name, .HEADING)
+    if len(the_package.docs) > 0 {
+        place_text(everything, &pos, the_package.name, .PARAGRAPH)
     }
 
+    for _, entity in the_package.entities {
+        if entity.kind == .Type_Name {
+            place_text(everything, &pos, format_code_block(entity), .CODE_BLOCK, entity = entity)
 
-    fmt.println(to_string(data, the_package.name))
-
-    place_text(&pos, to_string(data, the_package.name), .HEADING)
-    if the_package.docs.length != 0 {
-        place_text(&pos, to_string(data, the_package.docs), .PARAGRAPH)
-    }
-
-    entities := doc.from_array(&header.base, header.entities)
-    entries := doc.from_array(&header.base, the_package.entries)
-
-    for entry in entries {
-        declaration := entities[entry.entity]
-        if is_any_kind(declaration .kind, .Type_Name) {
-            code := fmt.aprint(
-                      to_string(data, declaration.name), 
-                      "::", 
-                      to_string(data, declaration.init_string), 
-                      allocator = context.temp_allocator)
-
-            place_text(&pos, format_code_block(header, declaration), .CODE_BLOCK)
-
-            if declaration.docs.length != 0 {
-                place_text(&pos, to_string(data, declaration.docs), .PARAGRAPH)
+            if len(entity.docs) != 0 {
+                place_text(everything, &pos, entity.docs, .PARAGRAPH)
             }
         }
     }
 
 
-    for entry in entries {
-        declaration := entities[entry.entity]
-        if is_any_kind(declaration .kind, .Procedure) {
-            code := fmt.aprint(
-                      to_string(data, declaration.name), 
-                      "::", 
-                      to_string(data, declaration.init_string), 
-                      allocator = context.temp_allocator)
+    for _, entity in the_package.entities {
+        if entity.kind == .Procedure {
+            place_text(everything, &pos, format_code_block(entity), .CODE_BLOCK, entity = entity)
 
-            place_text(&pos, format_code_block(header, declaration), .CODE_BLOCK)
-
-            if declaration.docs.length != 0 {
-                place_text(&pos, to_string(data, declaration.docs), .PARAGRAPH)
-            }
-        }
-    }
-    
-    for entry in entries {
-        declaration := entities[entry.entity]
-        if is_any_kind(declaration .kind, .Proc_Group) {
-            code := fmt.aprint(
-                      to_string(data, declaration.name), 
-                      "::", 
-                      to_string(data, declaration.init_string), 
-                      allocator = context.temp_allocator)
-
-            place_text(&pos, format_code_block(header, declaration), .CODE_BLOCK)
-
-            if declaration.docs.length != 0 {
-                place_text(&pos, to_string(data, declaration.docs), .PARAGRAPH)
+            if len(entity.docs) != 0 {
+                place_text(everything, &pos, entity.docs, .PARAGRAPH)
             }
         }
     }
 
-    for entry in entries {
-        declaration := entities[entry.entity]
-        if is_any_kind(declaration .kind, .Constant) {
-            code := fmt.aprint(
-                      to_string(data, declaration.name), 
-                      "::", 
-                      to_string(data, declaration.init_string), 
-                      allocator = context.temp_allocator)
 
-            place_text(&pos, format_code_block(header, declaration), .CODE_BLOCK)
+    for _, entity in the_package.entities {
+        if entity.kind == .Proc_Group {
+            place_text(everything, &pos, format_code_block(entity), .CODE_BLOCK, entity = entity)
 
-            if declaration.docs.length != 0 {
-                place_text(&pos, to_string(data, declaration.docs), .PARAGRAPH)
+            if len(entity.docs) != 0 {
+                place_text(everything, &pos, entity.docs, .PARAGRAPH)
             }
         }
     }
 
-    for entry in entries {
-        declaration := entities[entry.entity]
-        if is_any_kind(declaration .kind, .Variable) {
-            code := fmt.aprint(
-                      to_string(data, declaration.name), 
-                      "::", 
-                      to_string(data, declaration.init_string), 
-                      allocator = context.temp_allocator)
+    for _, entity in the_package.entities {
+        if entity.kind == .Constant || entity.kind == .Variable {
+            place_text(everything, &pos, format_code_block(entity), .CODE_BLOCK, entity = entity)
 
-            place_text(&pos, format_code_block(header, declaration), .CODE_BLOCK)
-
-            if declaration.docs.length != 0 {
-                place_text(&pos, to_string(data, declaration.docs), .PARAGRAPH)
+            if len(entity.docs) != 0 {
+                place_text(everything, &pos, entity.docs, .PARAGRAPH)
             }
         }
     }
-
 
 }
-
-//   // caches all of the text for the main documentation body.
-//   //    | A | B | C | D |
-//   // ---+----------------
-//   // a  |  xxxxxxxxxxxx
-//   // b  |  xxxxxxxxxxxx
-//   //  c |  xxxxxxxxxxxx
-//   //    |  xxxxxxxxxxxx
-//   cache_body :: proc(the_package: Package) {// {{{
-//       cache_text :: proc(str: string, type: TextType) -> (texture: Texture, size: Vector) {
-//           text :: ttf.RenderText_Blended_Wrapped
-//           cstr :: strings.clone_to_cstring        // TODO I can now replace with fast_str_to_cstr
-//                                                   // OR later replace with custom RenderText
-//           font  := fonts.regular
-//           color : RGBA = { 127, 0, 0, 255 }
-//           switch type {
-//           case .HEADING   : font = fonts.large;   color = colorscheme[.FG1]
-//           case .PARAGRAPH :                       color = colorscheme[.FG1]
-//           case .CODE_BLOCK: font = fonts.mono;    color = colorscheme[.CODE]
-//           case .HYPERLINK :                       color = colorscheme[.BLUE]
-//           }
-//           
-//           surface := text(font, cstr(str, context.temp_allocator), color, u32(window.size.x - window.sidebar_w))
-//           defer  sdl.FreeSurface(surface)
-//           return sdl.CreateTextureFromSurface(window.renderer, surface), { surface.w, surface.h }
-//       }
-//   
-//       place_text :: proc(pos: ^Vector, str: string, type: TextType) {
-//           assert(str != "")
-//           texture : Texture
-//           size    : Vector
-//           element : TextBox
-//           
-//           texture, size = cache_text(str, type)
-//           defer  pos.y += size.y + 4
-//   
-//           element.pos  = pos^
-//           element.size = size
-//           element.tex  = texture
-//           element.text = str
-//           element.type = type
-//           // links maybe later?
-//           append(&cache.body, element)
-//   
-//       }
-//       
-//       clear(&cache.body)
-//   
-//       // === STATE TO BE MODIFIED ===
-//       pos : Vector = { window.sidebar_w + 10, window.toolbar_h + 10 }
-//   
-//       place_text(&pos, the_package.name, .HEADING)
-//       place_text(&pos, the_package.path, .HYPERLINK)
-//   
-//       place_text(&pos, the_package.description, .PARAGRAPH)
-//       pos.y += CONFIG_FONT_SIZE
-//   
-//       place_text(&pos, the_package.description, .PARAGRAPH)
-//   
-//       pos.y += CONFIG_FONT_SIZE
-//       place_text(&pos, "TYPES", .HEADING)
-//       for item in the_package.types {
-//           place_text(&pos, format_statement(item.name), .CODE_BLOCK)
-//           if item.comment != "" do place_text(&pos, item.comment, .PARAGRAPH)
-//       }
-//   
-//       pos.y += CONFIG_FONT_SIZE
-//       place_text(&pos, "PROCEDURE GROUPS", .HEADING)
-//       for item in the_package.proc_groups {
-//           place_text(&pos, format_statement(item.name), .CODE_BLOCK)
-//           if item.comment != "" do place_text(&pos, item.comment, .PARAGRAPH)
-//       }
-//   
-//       pos.y += CONFIG_FONT_SIZE
-//       place_text(&pos, "PROCEDURES", .HEADING)
-//       for item in the_package.procedures {
-//           place_text(&pos, item.name, .CODE_BLOCK)
-//           if item.comment != "" do place_text(&pos, item.comment, .PARAGRAPH)
-//       }
-//   
-//       pos.y += CONFIG_FONT_SIZE
-//       place_text(&pos, "CONSTANTS", .HEADING)
-//       for item in the_package.constants {
-//           place_text(&pos, item.name, .CODE_BLOCK)
-//           if item.comment != "" do place_text(&pos, item.comment, .PARAGRAPH)
-//       }
-//   
-//   }// }}}
 
 cache_sidebar :: proc() {
     cache_text :: proc(str: string, large: bool) -> (texture: Texture, size: Vector) {
@@ -460,9 +400,10 @@ cache_sidebar :: proc() {
     }
 
     sidebar_click_event_handler :: proc(target: ^Button) -> bool {
-        cache_body(read_documentation_file(
-                (transmute(^string) target.userdata)^
-        ))
+        everything, ok := docl.load((transmute(^string) target.userdata)^)
+        if ok {
+            cache_body(everything)
+        }
         return false
     }
     
@@ -513,6 +454,7 @@ cache_sidebar :: proc() {
         append(&cache.sidebar, button)
         
         pos.y += button.size.y + 2
+        window.sidebar_scroll.max = pos.y
     }
 
 

@@ -103,4 +103,36 @@ for entry in entries {
 4. look up index (that you get from each scope entry) from ALL entities
 5. there.
 
+## Types
+
+Just don't fucking use them. 
+"entity.type"? What's that?
+
+Look up the package by name before '.'
+if you got it: good
+if you didn't it's a struct or whatever
+
+look up the var name inside of the package...
+
+I spent 2 days on this, whatever...
+
+*you can get like struct and enum members by:* `entity.type[*].types.entities.types` *OR SMTH*
+and you can kinda get function parameters by entity.type[...].types.entities
+
+idk, i didn't find returns...
+
+There's also this:
+https://github.com/odin-lang/pkg.odin-lang.org/blob/master/main.odin#L1097
+good luck!
+
+my recomendation:
+    1. as you're caching the files, make a `map [file] map [import_alias] package_name` file
+    2.  a) later, as you're looping through entity bodies,
+        b) have some state, like `may_be_type: bool`
+        c) `if this_token.kind == .Colon do may_be_type = true`; `if this_token.kind == .Comma || is_actually_type do may_be_type = false`
+        d) `if may_be_type && prev_token.kind == .Period && next_token.text in packages[ package_aliasses[this_file][prev_prev_token.text] ].entities`
+        e) I DON'T KNOWWWWWW
+
+
+
 

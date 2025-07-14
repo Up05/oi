@@ -5,17 +5,10 @@ import "core:strings"
 import "core:unicode/utf8"
 import odin "core:odin/tokenizer"
 import doc "core:odin/doc-format"
+import docl "doc-loader"
 
 import sdl "vendor:sdl2"
 import ttf "vendor:sdl2/ttf"
-
-DeclType :: enum {
-    WHATEVER,
-    PROC,
-    PROC_GROUP,
-    STRUCT,
-    ENUM_OR_UNION,
-}
 
 SPACE_AROUND : [] byte : { ':', '=', '{' }
 
@@ -32,6 +25,10 @@ odin_look_for :: proc(code: string, needle: rune, unescaped := false) -> int {
     return len(code)
 }
 odin_look_for_string :: proc(code: string, needle: string, unescaped := false) -> int {
+    when MEASURE_PERFORMANCE {
+        __start := tick_now() 
+        defer fperf[#location().procedure] += tick_diff(__start, tick_now())
+    }    
     escaped: bool
     for r, i in code {
         if escaped {
@@ -44,10 +41,15 @@ odin_look_for_string :: proc(code: string, needle: string, unescaped := false) -
     return len(code)
 }
 
-format_code_block :: proc(header: ^Header, entity: Declaration) -> string {
-
-    name := doc.from_string(&header.base, entity.name) 
-    body := doc.from_string(&header.base, entity.init_string) 
+format_code_block :: proc(entity: ^docl.Entity) -> string {
+    when MEASURE_PERFORMANCE {
+        __start := tick_now() 
+        defer fperf[#location().procedure] += tick_diff(__start, tick_now())
+    }    
+    
+    // where this implementation before the library
+    name := entity.name
+    body := entity.body 
 
     tokenizer: odin.Tokenizer
     odin.init(&tokenizer, body, "") // TODO CHECK WHAT IS THE DEFAULT_ERROR_HANDLER!!!
@@ -58,6 +60,7 @@ format_code_block :: proc(header: ^Header, entity: Declaration) -> string {
     switch entity.kind {
     case .Import_Name, .Library_Name, .Builtin, .Invalid:
         panic("I don't know what the fuck any of these are...")
+        // I still don't really, except .Library_Name is literally a library name, like: libc... (in ent.foreign_entity)
     
     case .Type_Name, .Proc_Group,  .Constant, .Variable, .Procedure:
         strings.write_string(&result, name)
@@ -115,8 +118,8 @@ format_code_block :: proc(header: ^Header, entity: Declaration) -> string {
                 }
             } else {
                 strings.write_rune(&result, r)
-            
             }
+
         }
         
         when CONFIG_SET_THE_CHILDREN_STRAIGHT {
@@ -196,6 +199,10 @@ format_code_block :: proc(header: ^Header, entity: Declaration) -> string {
 }
 
 find_color :: proc(token: odin.Token) -> RGBA {
+    when MEASURE_PERFORMANCE {
+        __start := tick_now() 
+        defer fperf[#location().procedure] += tick_diff(__start, tick_now())
+    }    
     @static prev_color: RGBA
     @static same_color_tokens: i32
 
@@ -221,14 +228,17 @@ find_color :: proc(token: odin.Token) -> RGBA {
     return { 255, 255, 255, 255 }
 }
 
-cache_code_block :: proc(code_block: string) -> Image {
+
+// TODO ideally, make a version with a font atlast
+// that users with slower PCs may choose to enable
+// or just never render everything?
+cache_code_block :: proc(everything: docl.Everything, code_block: string) -> (main: Image, links: [] HyperLink) {
+    when MEASURE_PERFORMANCE {
+        __start := tick_now() 
+        defer fperf[#location().procedure] += tick_diff(__start, tick_now())
+    }    
     text :: ttf.RenderUTF8_Blended
-    cstr :: strings.clone_to_cstring
-    
-    new_image :: proc(height: i32) -> Image {
-        masks : [4] u32 = { 0xff000000, 0x00ff0000, 0x0000ff00, 0x000000ff, }
-        return sdl.CreateRGBSurface(0, window.size.x - window.sidebar_w, height, 32, masks.r, masks.g, masks.b, masks.a)
-    }
+    // text :: proc(font: Font, text: cstring, fg: sdl.Color) -> ^sdl.Surface { return sdl.CreateRGBSurfaceWithFormat(0, 1, 1, 32, auto_cast sdl.PixelFormatEnum.ARGB8888) }
     
     lines: i32
     longest_line: string
@@ -246,15 +256,21 @@ cache_code_block :: proc(code_block: string) -> Image {
     }
 
     entire_width, font_height: i32
-    ttf.SizeText(fonts.mono, cstr(longest_line), &entire_width, &font_height)
+    longest_line_cstr, ll_r, ll_i := corrupt_to_cstr(longest_line)
+    ttf.SizeText(fonts.mono, longest_line_cstr, &entire_width, &font_height)
+    uncorrupt_cstr(longest_line_cstr, ll_r, ll_i)
 
-    main := new_image((font_height + CONFIG_CODE_LINE_SPACING) * (lines + 2))
+    width  := window.size.x - window.sidebar_w
+    height := (font_height + CONFIG_CODE_LINE_SPACING) * (lines + 2)
+    main    = sdl.CreateRGBSurfaceWithFormat(0, width, height, 32, auto_cast sdl.PixelFormatEnum.ARGB8888)
     sdl.SetSurfaceBlendMode(main, .NONE) // so I don't blend the textures twice
 
     pos: Vector
 
     toker: odin.Tokenizer
     odin.init(&toker, code_block, "")
+
+    link_list: [dynamic] HyperLink
     
     prev_token: odin.Token
     for {
@@ -263,7 +279,7 @@ cache_code_block :: proc(code_block: string) -> Image {
         if token.kind == .EOF do break
         if token.text == "" do continue
 
-        text_between := code_block[ prev_token.pos.offset + len(prev_token.text) : token.pos.offset ]
+        text_between := code_block[ prev_token.pos.offset + len(prev_token.text) : token.pos.offset ]// {{{
         if len(text_between) > 0 {
             if text_between[0] == '\n' {
                 pos.x = 0
@@ -272,10 +288,13 @@ cache_code_block :: proc(code_block: string) -> Image {
             }
             if len(text_between) > 0 {
                 space_w, scrap: i32
-                ttf.SizeText(fonts.mono, cstr(text_between), &space_w, &scrap)
+
+                text_between_cstr, tb_r, tb_i := corrupt_to_cstr(text_between)
+                ttf.SizeText(fonts.mono, text_between_cstr, &space_w, &scrap)
+                uncorrupt_cstr(text_between_cstr, tb_r, tb_i)
                 pos.x += space_w
             }
-        }
+        }// }}}
         
         if odin.is_newline(token) {
             pos.x = 0
@@ -283,12 +302,20 @@ cache_code_block :: proc(code_block: string) -> Image {
             continue
         }
 
-        surface := text(fonts.mono, cstr(token.text), find_color(token)) 
+        token_cstr, t_r, t_i := corrupt_to_cstr(token.text)
+        surface := text(fonts.mono, token_cstr, find_color(token)) 
+        uncorrupt_cstr(token_cstr, t_r, t_i)
         sdl.BlitSurface(surface, &surface.clip_rect, main, &{ pos.x, pos.y, surface.w, surface.h })
+
+        if target, ok := everything.initial_package.entities[token.text]; ok {
+            hyperlink := HyperLink { pos = pos, size = { surface.w, surface.h }, target = target }
+            append(&link_list, hyperlink)
+        }
+
         pos += { surface.w, 0 }
         sdl.FreeSurface(surface)
 
     }
 
-    return main
+    return main, link_list[:]
 }

@@ -1,11 +1,23 @@
 package main
 
+import "base:runtime"
 import "core:fmt"
+import "core:time"
+
+tick_now  :: time.tick_now
+tick_diff :: time.tick_diff
+fperf: map [string] time.Duration
+
+/*
+    when MEASURE_PERFORMANCE {
+        __start := tick_now() 
+        defer fperf[#location().procedure] += tick_diff(__start, tick_now())
+    }    
+*/ 
 
 intersects :: proc(a: Vector, b: Vector, b_size: Vector) -> bool {
     return a.x >= b.x && a.y >= b.y   &&   a.x <= b.x + b_size.x && a.y <= b.y + b_size.y
 }
-
 
 proper_to_rgba :: proc(hex: u32) -> RGBA {
     r : u8 = u8( (hex & 0xFF000000) >> 24 )
@@ -45,8 +57,6 @@ is_any :: proc(a: $T, b: ..T) -> bool {
     return false
 }
 
-// 
-
 is_identifier_char :: proc(ch: byte) -> bool {
     return (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || ch == '_' || ch == '#' || ch == '@'
 }
@@ -58,4 +68,37 @@ clone_and_replace_chars :: proc(str: string, from: byte, to: byte, allocator := 
     }
     return new_str
 }
+
+corrupt_to_cstr :: proc(str: string) -> (out: cstring, original: byte, original_at: int) {
+    // If the segfault points to this function
+    // it means the passed string was stack allocated.
+    // just don't use this function for whatever you're using it for...
+    buf := transmute([] byte) str
+    #no_bounds_check original = buf[len(str)]
+    #no_bounds_check buf[len(str)] = 0
+    return cstring(raw_data(str)), original, len(str)
+}
+
+uncorrupt_cstr :: proc(cstr: cstring, original: byte, original_at: int) -> string {
+    slice := runtime.Raw_Slice { data = rawptr(cstr), len = original_at }
+    #no_bounds_check (transmute([] byte) slice) [original_at] = original
+    return transmute(string) slice
+}
+
+concat_to_cstr :: proc(strings: ..string) -> cstring {
+    buffer_length: int
+    for s in strings { buffer_length += len(s) }
+    
+    buffer := make_slice([] byte, buffer_length + 1)
+
+    pos: int
+    for s in strings {
+        runtime.mem_copy_non_overlapping(raw_data(buffer[pos:]), raw_data(s), len(s))
+        pos += len(s)
+    }
+
+    buffer[pos] = 0
+    return cstring(raw_data(buffer))
+}
+
 

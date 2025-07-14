@@ -7,6 +7,8 @@ import "core:simd"
 import fp "core:path/filepath"
 import doc "core:odin/doc-format"
 
+import doc_loader "doc-loader"
+
 Package     :: doc.Pkg
 Declaration :: doc.Entity
 Header      :: doc.Header

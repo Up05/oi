@@ -3,16 +3,13 @@ package main
 import "core:fmt"
 import sdl "vendor:sdl2"
 
-// main.odin should only be changed when absolutely necessary
-// and cannot even be bodged elsewhere.
-
-
-// This is a programmer tool, let's be suckless!
+// This is a programmer tool, might as well just make it suckless!
 // ========== CONFIGURATION ==========
 
 CONFIG_MAX_FPS      :: 60   
-
 CONFIG_FONT_SIZE    :: 14
+
+CONFIG_SCROLLBAR_WIDTH :: 16
 
 // original colorscheme totally stolen from morhetz/gruvbox
 CONFIG_UI_BG1       :: "282828FF"
@@ -56,6 +53,7 @@ CONFIG_WHAT_IS_LONG_PROC :: 50
 
 // ===================================
 
+MEASURE_PERFORMANCE :: true 
 
 // partially taken from: https://stackoverflow.com/questions/2548541/achieving-a-constant-frame-rate-in-sdl
 next_frame_target: u32
@@ -66,10 +64,17 @@ take_break :: proc() {
 }
 
 main :: proc() {
-    
-    // cache_everything()
-    // fmt.println("\n================================================================")
-    // assert( sdl.GetTicks() != 999999 )
+    defer {
+        longest: int
+        for func, _ in fperf {
+            longest = max(longest, len(func))
+        }
+
+        for func, durr in fperf {
+            space :=  "                                                    "
+            fmt.printfln("%s%s%v", func, space[:longest - len(func) + 4], durr)
+        }
+    }
 
     assert( sdl.Init(sdl.INIT_VIDEO) >= 0, "Failed to initialize SDL!" )
     assert( sdl.CreateWindowAndRenderer(1280, 720, { sdl.WindowFlag.RESIZABLE }, &window.handle, &window.renderer) >= 0, "Failed to start program!" )
@@ -106,3 +111,30 @@ main :: proc() {
     sdl.DestroyWindow(window.handle)
     sdl.Quit()
 }   
+
+
+/*
+TODO:
+  1. global indexer
+    load every file 
+    simd look from strings that match the user querry*
+      from entities[0].offset to entities[entities.length - 1].offset + ... .size
+    load/highlight? files that have anything useful
+
+  2. links
+    links for the same package I can do right now
+    for links to other packages
+      make my own map of files to package aliasses to packages
+        (parse the odin files when recaching everything)
+      and then just curr_file + pkg_alias.name -> package.name
+
+  3. custom content
+    I would like to render the overview
+    odin index's documentation
+    ...
+
+  4. (very easy) user libs
+ 
+*/
+
+
