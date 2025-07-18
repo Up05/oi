@@ -4,6 +4,7 @@ import "base:runtime"
 import "core:fmt"
 import "core:time"
 import "core:strings"
+import "core:unicode/utf8"
 
 import sdl "vendor:sdl2"
 import "vendor:sdl2/ttf"
@@ -63,6 +64,11 @@ is_any :: proc(a: $T, b: ..T) -> bool {
 
 is_identifier_char :: proc(ch: byte) -> bool {
     return (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || ch == '_' || ch == '#' || ch == '@'
+}
+
+last_rune_size :: proc(bytes: [] byte) -> int {
+    _, n := utf8.decode_last_rune_in_bytes(bytes)
+    return n
 }
 
 clone_and_replace_chars :: proc(str: string, from: byte, to: byte, allocator := context.allocator) -> string {

@@ -269,13 +269,7 @@ render_frame :: proc() {// {{{
            element.click != nil { element.click(&element) }
     }
     
-    draw_search(window.toolbar_search)
-
-    if window.active_search != nil {
-        draw_cursor(window.active_search^)
-
-    }
-    
+    draw_search(window.toolbar_search, window.active_search == &window.toolbar_search)
 
     // ========================== INTERSECTION? ========================== 
     

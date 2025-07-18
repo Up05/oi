@@ -81,7 +81,6 @@ handle_event_search :: proc(search: ^Search, base_event: sdl.Event) {
 
         if select != cursor {
             hi := max(select, cursor) // as in hi-fi, a.k.a.: "to" (I use it elsewhere too)
-            hi += utf8.rune_size(utf8.rune_at(string(text.buf[:]), hi))
             remove_range(&text.buf, min(select, cursor), hi)
             cursor = min(cursor, select)
             select = cursor
@@ -101,12 +100,10 @@ handle_event_search :: proc(search: ^Search, base_event: sdl.Event) {
         return
 
     case .DELETE:
-        _, end_size := utf8.decode_last_rune(text.buf[:])
-        if cursor > len(text.buf) - end_size do return
+        if cursor > len(text.buf) do return
 
         if select != cursor {
             hi := max(select, cursor) // as in hi-fi, a.k.a.: "to" (I use it elsewhere too)
-            hi += utf8.rune_size(utf8.rune_at(string(text.buf[:]), hi))
             remove_range(&text.buf, min(select, cursor), hi)
             cursor = min(cursor, select)
             select = cursor
@@ -126,64 +123,66 @@ handle_event_search :: proc(search: ^Search, base_event: sdl.Event) {
         render_search(search)
         return
 
+    // arrows keys genuinely are just that convoluted...
+    // and they don't feel right at all otherwise...
     case .LEFT:
-        
-        if ctrl {
-            if shift {
-                if select == 0 do return
-                select = strings.last_index_byte(string(text.buf[:select-1]), ' ') + 1
-            } else {
-                if cursor == 0 do return
-                cursor = strings.last_index_byte(string(text.buf[:cursor-1]), ' ') + 1
-                select = cursor
-            }
-        } else {
-            size: int 
-            #reverse for r in string(text.buf[:cursor]) do size = utf8.rune_size(r)
-            if shift {
-                if select == 0 do return
-                select -= size
-                return
-            }
-            if cursor == 0 do return
-            cursor -= size
+        cursor = min(max(cursor, 0), len(text.buf))
+        select = min(max(select, 0), len(text.buf))
+
+        if cursor != select && !shift {
+            cursor = min(cursor, select)
             select = cursor
+            return
         }
+
+        if ctrl {
+            space_skip := (1 * int(select > 0))
+            space := strings.last_index_byte(string(text.buf[:select - space_skip]), ' ')
+            select = (space + space_skip) if space != -1 else 0
+            
+            if !shift do cursor = select
+            return
+        }
+
+
+        select -= last_rune_size(text.buf[:min(cursor, select)])
+        select = max(select, 0)
+        if !shift do cursor = select
+        return
     
     case .RIGHT:
-        // originally >= everywhere and it works there and I don't know why...
-
         _, end_size := utf8.decode_last_rune(text.buf[:])
-        if ctrl {
-            if shift {
-                if select > len(text.buf) - end_size do return
-                select = strings.index_byte(string(text.buf[select + 1:]), ' ') + select + 1
-            } else {
-                if cursor > len(text.buf) - end_size do return
-                cursor = strings.index_byte(string(text.buf[cursor + 1:]), ' ') + cursor + 1
-                select = cursor
-            }
+        cursor = min(max(cursor, 0), len(text.buf))
+        select = min(max(select, 0), len(text.buf))
+
+        if cursor != select && !shift {
+            cursor = max(cursor, select)
+            select = cursor
             return
         }
-        size := utf8.rune_size(utf8.rune_at(string(text.buf[:]), cursor))
-        if shift {
-            if select > len(text.buf) - end_size do return
-            select += size
+
+        if ctrl {
+            space_skip := (1 * int(select + 1 < len(text.buf)))
+            space := strings.index_byte(string(text.buf[select + space_skip:]), ' ')
+            select = space + select + space_skip if space != -1 else len(text.buf)
+
+            if !shift do cursor = select
             return
         }
         
-        if cursor > len(text.buf) - end_size do return
-        cursor += size
-        select = cursor
+        select += utf8.rune_size(utf8.rune_at(string(text.buf[:]), select))
+        select = min(select, len(text.buf))
+        if !shift do cursor = select
+        return
     
     case .UP, .DOWN: // TODO: traverse history
+        return
 
     case .A:
         if !ctrl do break
 
         select = 0
-        _, size := utf8.decode_last_rune(text.buf[:])
-        cursor = len(text.buf) - size
+        cursor = len(text.buf)
 
         return
         
@@ -223,7 +222,7 @@ handle_event_search :: proc(search: ^Search, base_event: sdl.Event) {
     case: 
     }
 
-
+    // ============================== ACTUAL TYPING ===============================
 
     // I have zero clue how someone would actually implement this at all whatsoever...
     if cast(bool) ttf.GlyphIsProvided32(fonts.regular, transmute(rune) event.sym) {
@@ -246,23 +245,33 @@ handle_event_search :: proc(search: ^Search, base_event: sdl.Event) {
 
 
 
-draw_search :: proc(search: Search) {
+draw_search :: proc(search: Search, is_active: bool) {
+    FG := colorscheme[.FG2]
+    BG := colorscheme[.BLUE]
+
+    if is_active {
+        if search.cursor != search.select && max(search.cursor, search.select) < len(search.offsets) {
+            x := i32(search.offsets[min(search.cursor, search.select)])
+            w := i32(search.offsets[max(search.cursor, search.select)]) - x 
+                
+            sdl.SetRenderDrawColor(window.renderer, BG.r, BG.g, BG.b, BG.a)
+            sdl.RenderFillRect(window.renderer, &{ search.pos.x + x, search.pos.y, w, search.pos.y + search.size.y })
+        }
+    }
+
     sdl.RenderCopy(
         window.renderer, search.texture, 
         &{ 0, 0, search.size.x, search.size.y }, 
         &{ search.pos.x, search.pos.y, search.size.x, search.size.y }    
     )
-}
 
-draw_cursor :: proc(search: Search) {
-    FG := colorscheme[.FG1]
-    sdl.SetRenderDrawColor(window.renderer, FG.r, FG.g, FG.b, FG.a)
-
-    if search.select == search.cursor {
-        x := i32(int(search.pos.x) + search.offsets[search.cursor])
-        sdl.RenderDrawLine(window.renderer, x, i32(search.pos.y), x, i32(search.pos.y + search.size.y))
+    if is_active {
+        if search.cursor == search.select && max(search.cursor, search.select) < len(search.offsets) {
+            x := i32(int(search.pos.x) + search.offsets[min(search.cursor, search.select)])
+            sdl.SetRenderDrawColor(window.renderer, FG.r, FG.g, FG.b, FG.a)
+            sdl.RenderDrawLine(window.renderer, x, i32(search.pos.y), x, i32(search.pos.y + search.size.y))
+        }
     }
-
 }
 
 

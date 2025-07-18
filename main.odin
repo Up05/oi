@@ -117,6 +117,14 @@ main :: proc() {
 
 /*
 TODO:
+    
+  search:
+    selection cursors
+    maybe all_search_inputs: [dynamic] ^Search
+      for mouse input...
+    up/down arrows could be used for the selection of items in the list?
+    maybe make it numbered list and then 12312.
+
   1. global indexer
     load every file 
     simd look from strings that match the user querry*
