@@ -8,8 +8,9 @@ import sdl "vendor:sdl2"
 
 CONFIG_MAX_FPS      :: 60   
 CONFIG_FONT_SIZE    :: 14
-
 CONFIG_SCROLLBAR_WIDTH :: 16
+
+CONFIG_SEARCH_WIDTH :: 80
 
 // original colorscheme totally stolen from morhetz/gruvbox
 CONFIG_UI_BG1       :: "282828FF"
@@ -63,6 +64,7 @@ take_break :: proc() {
     if breaktime < 1000 do sdl.Delay(breaktime)
 }
 
+should_exit: bool
 main :: proc() {
     defer {
         longest: int
@@ -82,12 +84,12 @@ main :: proc() {
     initialize_window()
 
     next_frame_target = sdl.GetTicks() + (1000 / CONFIG_MAX_FPS)
-    gameloop: for {
+    for !should_exit {
         event: sdl.Event
         for sdl.PollEvent(&event) {
             #partial switch event.type {
-            case .QUIT:         break gameloop
-            case .KEYDOWN:      if event.key.keysym.sym == .ESCAPE { break gameloop }
+            case .QUIT:         should_exit = true
+            case .KEYDOWN:      handle_keypress(event)
             case .WINDOWEVENT:  if event.window.event == .RESIZED  { handle_resize() }
             case .MOUSEWHEEL:   window.events.scroll = { event.wheel.x, event.wheel.y }
             case .MOUSEBUTTONDOWN: window.events.click = auto_cast event.button.button
@@ -121,12 +123,13 @@ TODO:
       from entities[0].offset to entities[entities.length - 1].offset + ... .size
     load/highlight? files that have anything useful
 
-  2. links
+  2. links 
     links for the same package I can do right now
     for links to other packages
       make my own map of files to package aliasses to packages
         (parse the odin files when recaching everything)
       and then just curr_file + pkg_alias.name -> package.name
+    this is just in the "Everything/Global search" package
 
   3. custom content
     I would like to render the overview
@@ -134,6 +137,9 @@ TODO:
     ...
 
   4. (very easy) user libs
+
+  5. toolbar
+    I think, it would be nice to have this as a package specific thing honestly...
  
 */
 

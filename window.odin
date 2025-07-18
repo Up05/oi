@@ -34,7 +34,6 @@ Color :: enum {
 
 Vector :: [2] i32
 
-
 HyperLink :: struct {
     pos    : Vector,
     size   : Vector,
@@ -58,8 +57,10 @@ Button   :: struct {
     size  : Vector,
     tex   : Texture,
     click : ClickEvent,
-
     userdata : rawptr,
+    padding  : Vector,
+    border  : bool,
+
 }
 
 Scroll :: struct {
@@ -88,6 +89,9 @@ window : struct {
 
     content_scroll : Scroll, // scroll is negative!!! 
     sidebar_scroll : Scroll, // .pos can never be positive
+
+    toolbar_search : Search,
+    active_search : ^Search,
 }
 
 fonts : struct {
@@ -99,10 +103,12 @@ fonts : struct {
 cache : struct {
     body    : [dynamic] TextBox,
     sidebar : [dynamic] Button,
+    toolbar : [dynamic] Button,
     
     //              ent.name pos.y
     positions : map [string] i32
 }
+
 
 initialize_window :: proc() {// {{{
 
@@ -122,7 +128,7 @@ initialize_window :: proc() {// {{{
     fonts.mono    = ttf.OpenFont("font-monospace.ttf", CONFIG_FONT_SIZE    )
     fonts.large   = ttf.OpenFont("font-regular.ttf",   CONFIG_FONT_SIZE * 2)
 
-    window.toolbar_h = 32
+    window.toolbar_h = 24
     window.sidebar_w = 256
 
     sdl.GetWindowSize(window.handle, &window.size.x, &window.size.y)
@@ -132,6 +138,10 @@ initialize_window :: proc() {// {{{
     cache_body(everything)
 
     cache_sidebar()
+    cache_toolbar()
+
+    // TODO temp
+    window.active_search = &window.toolbar_search
 
 
 }// }}}
@@ -231,16 +241,53 @@ render_frame :: proc() {// {{{
            element.click != nil { element.click(&element) }
     }
 
+
+    render_scrollbar({ window.sidebar_w - CONFIG_SCROLLBAR_WIDTH, window.toolbar_h }, &window.sidebar_scroll)
+
     // ============================= TOOLBAR ============================= 
 
     bar  = colorscheme[.BG2]
     sdl.SetRenderDrawColor(window.renderer, bar.r, bar.g, bar.b, bar.a)
     sdl.RenderFillRect(window.renderer, &{ 0, 0, window.size.x, window.toolbar_h })
 
+    for &element in cache.toolbar {
+        using element
+    
+        sdl.RenderCopy(window.renderer, tex, 
+            &{ 0, 0, size.x, size.y }, &{ pos.x, pos.y, size.x, size.y })
+
+        if element.border {
+            border := colorscheme[.FG2]
+            sdl.SetRenderDrawColor(window.renderer, border.r, border.g, border.b, border.a)
+            border_pos  := element.pos  - element.padding/2        // + offset_y for other buttons
+            border_size := element.size + element.padding
+            sdl.RenderDrawRect(window.renderer, &{ border_pos.x, border_pos.y, border_size.x, border_size.y })
+        }
+
+        if intersects(window.mouse - { 0, 0 }, element.pos, element.size) &&
+           window.events.click == .LEFT &&
+           element.click != nil { element.click(&element) }
+    }
+    
+    draw_search(window.toolbar_search)
+
+    if window.active_search != nil {
+        draw_cursor(window.active_search^)
+
+    }
+    
+
+    // ========================== INTERSECTION? ========================== 
+    
+    bar  = colorscheme[.CODE]
+    sdl.SetRenderDrawColor(window.renderer, bar.r, bar.g, bar.b, bar.a)
+    sdl.RenderFillRect(window.renderer, &{ 0, 0, window.sidebar_w, window.toolbar_h })
     
 }// }}}
 
-cache_body :: proc(everything: docl.Everything) {
+
+
+cache_body :: proc(everything: docl.Everything) {// {{{
     when MEASURE_PERFORMANCE {
         __start := tick_now() 
         defer fperf[#location().procedure] += tick_diff(__start, tick_now())
@@ -370,9 +417,9 @@ cache_body :: proc(everything: docl.Everything) {
         }
     }
 
-}
+}// }}}
 
-cache_sidebar :: proc() {
+cache_sidebar :: proc() {// {{{
     cache_text :: proc(str: string, large: bool) -> (texture: Texture, size: Vector) {
         text :: ttf.RenderText_Blended
         cstr :: strings.clone_to_cstring        // TODO I can now replace with fast_str_to_cstr
@@ -458,8 +505,18 @@ cache_sidebar :: proc() {
     }
 
 
-}
+}// }}}
 
+cache_toolbar :: proc() {
+    // and as for buttons:
+    // ? ? ? ? ? ~ .* /search  \/  /\   ? ? ? ?
+
+    clear(&cache.toolbar)
+
+    button: Button
+
+    make_toolbar_search()
+}
 
 display_error :: proc(format: string, values: ..any) {
     fmt.printf(format, ..values)
