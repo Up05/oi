@@ -92,7 +92,11 @@ main :: proc() {
             case .KEYDOWN:      handle_keypress(event)
             case .WINDOWEVENT:  if event.window.event == .RESIZED  { handle_resize() }
             case .MOUSEWHEEL:   window.events.scroll = { event.wheel.x, event.wheel.y }
-            case .MOUSEBUTTONDOWN: window.events.click = auto_cast event.button.button
+            case .MOUSEBUTTONDOWN: 
+                window.events.click = auto_cast event.button.button
+                window.pressed      = auto_cast event.button.button
+            case .MOUSEBUTTONUP:
+                window.pressed = .NONE
             case: 
             }
         }

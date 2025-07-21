@@ -1,6 +1,9 @@
 package main
 
+import docl "doc-loader"
+
 import "core:fmt"
+import "core:slice"
 import "core:strings"
 import "core:unicode"
 import "core:unicode/utf8"
@@ -10,15 +13,16 @@ import "vendor:sdl2/ttf"
 
 
 Search :: struct {
-    pos  : Vector,
-    size : Vector,
+    pos      : Vector,
+    size     : Vector,
+    onsubmit : proc(search: ^Search),
 
-    text    : strings.Builder,
-    cursor  : int,              // cursor / selection start                 [bytes]
-    select  : int,              // selection end (cursor is the null state) [bytes]
-    texture : Texture,
+    text     : strings.Builder,
+    cursor   : int,              // cursor / selection start                 [bytes]
+    select   : int,              // selection end (cursor is the null state) [bytes]
+    texture  : Texture,
+    offsets  : [] int,           // rune x offsets in pixels, by byte (NOT RUNE)
 
-    offsets : [] int,    // rune x offsets in pixels, by byte (NOT RUNE)
 }
 
 make_toolbar_search :: proc() {
@@ -27,6 +31,63 @@ make_toolbar_search :: proc() {
     search.pos =  { window.sidebar_w + 4, 4 }
     search.texture, search.size = text_to_texture("[s]earch for items...", true)
     search.offsets = make([] int, 1)
+
+    search.onsubmit = proc(search: ^Search) {
+        for button in cache.search {
+            sdl.DestroyTexture(button.tex)
+        }
+        clear(&cache.search)
+
+        query := strings.to_string(search.text)
+        result: [dynamic] ^docl.Entity 
+        defer delete(result)
+        
+        start_item_count := len(current_everything.initial_package.entities)
+        for name, entity in current_everything.initial_package.entities {
+            if strings.starts_with(name, query) {
+                append(&result, entity)
+            }
+        }
+        
+        if len(result) == 0 do return
+        
+        slice.sort_by(result[:], proc(a, b: ^docl.Entity) -> bool {
+            return a.kind < b.kind if a.kind != b.kind else a.name < b.name
+        })
+
+        place_button :: proc(text: string, should_clone: bool, pos: ^Vector, font := fonts.regular) {
+            button := Button {
+                pos = pos^,
+            }
+            button.tex, button.size = text_to_texture(text, should_clone, font)
+            append(&cache.search, button)
+
+            pos.y += button.size.y
+        }
+
+        pos: Vector = { 4, 4 }
+
+        // i'm not importing the fucking dock-format
+        prev_kind := result[len(result) - 1].kind
+        prev_kind = auto_cast 0
+        for entity in result {
+
+            if prev_kind != entity.kind {
+                #partial switch entity.kind {
+                case .Procedure: place_button("Procedures", true, &pos, fonts.large)
+                case .Type_Name: place_button("Types",      true, &pos, fonts.large)
+                case .Constant: place_button("Constants",   true, &pos, fonts.large)
+                case .Variable: place_button("Variables",   true, &pos, fonts.large)
+                }
+                prev_kind = entity.kind
+            }
+            
+            fmt.println(entity.name, entity.kind)
+            place_button(entity.name, false, &pos, fonts.mono)
+
+            fmt.println(entity.name)
+        }
+    }
 
     defer window.toolbar_search = search
 }
@@ -76,6 +137,10 @@ handle_event_search :: proc(search: ^Search, base_event: sdl.Event) {
 
     // ported from another one of my tools
     #partial switch event.sym {
+    case .RETURN:
+        search.onsubmit(search)
+        return
+
     case .BACKSPACE, .KP_BACKSPACE:
         if cursor == 0 do break
 
@@ -241,6 +306,7 @@ handle_event_search :: proc(search: ^Search, base_event: sdl.Event) {
         search.select += n
         render_search(search)
     }
+    return
 }
 
 
@@ -274,4 +340,11 @@ draw_search :: proc(search: Search, is_active: bool) {
     }
 }
 
-
+// I made this more generic, cause idk where I'm gonna put it at all...
+// I'll just put to the side for now, I guess, as like a second open-able sidebar.
+make_search_panel :: proc() {
+    window.search_panel.pos  = { window.size.x, window.toolbar_h }
+    // default width, may change depending on result length?
+    window.search_panel.size = { 300, window.size.y - window.toolbar_h } 
+    window.search_panel.offset = { -15, 0 }
+}

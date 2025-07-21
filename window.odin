@@ -32,6 +32,13 @@ Color :: enum {
     BLUE        // hyperlinks
 }
 
+MouseButton :: enum { 
+    NONE, 
+    LEFT, 
+    MIDDLE, 
+    RIGHT 
+}
+
 Vector :: [2] i32
 
 HyperLink :: struct {
@@ -78,20 +85,28 @@ window : struct {
     renderer: ^sdl.Renderer,
     size    : Vector,
     mouse   : Vector,
+    pressed : MouseButton, 
 
     events  : struct {
         scroll : Vector,
-        click  : enum { NONE, LEFT, MIDDLE, RIGHT }, // none of us give a shit
+        click  : MouseButton, // none of us give a shit
     },
 
     toolbar_h : i32, // maybe more "navbar" buf "nav" is 3 symbols.
     sidebar_w : i32, // yup... just toolbar_height... in pixels...
 
-    content_scroll : Scroll, // scroll is negative!!! 
-    sidebar_scroll : Scroll, // .pos can never be positive
+    content_scroll    : Scroll, // scroll is negative!!! 
+    sidebar_scroll    : Scroll, // .pos can never be positive
+    dragged_scrollbar : ^Scroll,
 
     toolbar_search : Search,
-    active_search : ^Search,
+    active_search  : ^Search,
+    search_panel   : struct {
+        pos    : Vector,
+        size   : Vector,
+        offset : Vector,
+        // content is in cache.query
+    }
 }
 
 fonts : struct {
@@ -104,11 +119,13 @@ cache : struct {
     body    : [dynamic] TextBox,
     sidebar : [dynamic] Button,
     toolbar : [dynamic] Button,
+    search  : [dynamic] Button, // search panel results
     
     //              ent.name pos.y
     positions : map [string] i32
 }
 
+current_everything: docl.Everything
 
 initialize_window :: proc() {// {{{
 
@@ -136,13 +153,14 @@ initialize_window :: proc() {// {{{
     everything, ok := docl.load("cache/core@os.odin-doc")
     assert(ok)
     cache_body(everything)
+    current_everything = everything
 
     cache_sidebar()
     cache_toolbar()
 
     // TODO temp
     window.active_search = &window.toolbar_search
-
+    make_search_panel()
 
 }// }}}
 
@@ -172,6 +190,12 @@ render_scrollbar :: proc(pos: Vector, scroll: ^Scroll) {
     sdl.RenderFillRect(window.renderer, &{ pos.x, y2, w, h2 })
 
     if window.events.click == .LEFT && intersects(window.mouse, pos, { w, h }) {
+        window.dragged_scrollbar = scroll
+    } else if window.pressed == .NONE {
+        window.dragged_scrollbar = nil
+    }
+
+    if window.dragged_scrollbar == scroll {
         scroll.pos = -i32( f32(window.mouse.y - pos.y - h2/2)/f32(h) / (1/f32(scroll.max)) )
     }
 
@@ -221,7 +245,37 @@ render_frame :: proc() {// {{{
         }
     }
 
-    render_scrollbar({ window.size.x - CONFIG_SCROLLBAR_WIDTH, window.toolbar_h }, &window.content_scroll)
+    render_scrollbar(
+        { window.search_panel.pos.x + window.search_panel.offset.x - CONFIG_SCROLLBAR_WIDTH, window.toolbar_h },
+        &window.content_scroll)
+
+    // ============================= SEARCH  ============================= 
+
+    {
+        panel := &window.search_panel
+        pos := panel.pos + panel.offset 
+
+        bar := colorscheme[.BG2]
+        sdl.SetRenderDrawColor(window.renderer, bar.r, bar.g, bar.b, bar.a)
+        sdl.RenderFillRect(window.renderer, &{ pos.x, pos.y, panel.size.x, panel.size.y })
+
+        if window.events.click != .NONE && intersects(window.mouse, pos, panel.size) {
+            panel.offset.x = -panel.size.x if panel.offset.x != -panel.size.x else -15
+        }
+
+        for &element in cache.search {
+            offset_y := i32(0)
+            pos = element.pos + panel.pos + panel.offset 
+
+            sdl.RenderCopy(window.renderer, element.tex, 
+                &{ 0, 0, element.size.x, element.size.y }, 
+                &{ pos.x, pos.y + offset_y, element.size.x, element.size.y })
+
+            if intersects(window.mouse - { 0, offset_y }, pos, element.size) &&
+               window.events.click == .LEFT &&
+               element.click != nil { element.click(&element) }
+        }
+    }
 
     // ============================= SIDEBAR ============================= 
 

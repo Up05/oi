@@ -113,14 +113,14 @@ concat_to_cstr :: proc(strings: ..string) -> cstring {
 
 // should clone a string if it was allocated on the stack!
 // otherwise you will get a silent segfault and be sad
-text_to_texture :: proc(text: string, should_clone: bool) -> (texture: Texture, size: Vector) {
+text_to_texture :: proc(text: string, should_clone: bool, font := fonts.regular) -> (texture: Texture, size: Vector) {
     draw_text :: ttf.RenderUTF8_Blended
 
     if should_clone {
         cstr := strings.clone_to_cstring(text)
         defer delete(cstr)
 
-        text_surface := draw_text(fonts.regular, cstr, colorscheme[.FG1])
+        text_surface := draw_text(font, cstr, colorscheme[.FG1])
         if text_surface == nil do return nil, {}
         defer sdl.FreeSurface(text_surface)
         return sdl.CreateTextureFromSurface(window.renderer, text_surface), { text_surface.w, text_surface.h } 
@@ -129,7 +129,7 @@ text_to_texture :: proc(text: string, should_clone: bool) -> (texture: Texture, 
         cstr, original, original_at := corrupt_to_cstr(text)
         defer uncorrupt_cstr(cstr, original, original_at)
     
-        text_surface := draw_text(fonts.regular, cstr, colorscheme[.FG1])
+        text_surface := draw_text(font, cstr, colorscheme[.FG1])
         if text_surface == nil do return nil, {}
         defer sdl.FreeSurface(text_surface)
         return sdl.CreateTextureFromSurface(window.renderer, text_surface), { text_surface.w, text_surface.h } 
