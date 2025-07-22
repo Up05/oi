@@ -6,9 +6,12 @@ import sdl "vendor:sdl2"
 // This is a programmer tool, might as well just make it suckless!
 // ========== CONFIGURATION ==========
 
-CONFIG_MAX_FPS      :: 60   
-CONFIG_FONT_SIZE    :: 14
-CONFIG_SCROLLBAR_WIDTH :: 16
+CONFIG_MAX_FPS              :: 60   
+CONFIG_FONT_SIZE            :: 14
+CONFIG_LARGE_FONT_SIZE      :: 22
+CONFIG_SCROLLBAR_WIDTH      :: 16
+CONFIG_SEARCH_PANEL_CLOSED  :: 15  // in pixels
+CONFIG_SEARCH_PANEL_OPEN    :: 400 
 
 CONFIG_SEARCH_WIDTH :: 80
 

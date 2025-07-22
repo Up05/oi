@@ -24,6 +24,10 @@ intersects :: proc(a: Vector, b: Vector, b_size: Vector) -> bool {
     return a.x >= b.x && a.y >= b.y   &&   a.x <= b.x + b_size.x && a.y <= b.y + b_size.y
 }
 
+clicked_in :: proc(pos: Vector, size: Vector) -> bool {
+    return !window.events.cancel_click && intersects(window.mouse, pos, size) && window.events.click == .LEFT
+}
+
 proper_to_rgba :: proc(hex: u32) -> RGBA {
     r : u8 = u8( (hex & 0xFF000000) >> 24 )
     g : u8 = u8( (hex & 0x00FF0000) >> 16 )

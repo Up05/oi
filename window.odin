@@ -41,13 +41,6 @@ MouseButton :: enum {
 
 Vector :: [2] i32
 
-HyperLink :: struct {
-    pos    : Vector,
-    size   : Vector,
-    target : ^docl.Entity,
-}
-
-TextType :: enum { HEADING, PARAGRAPH, CODE_BLOCK }
 TextBox  :: struct {
     pos   : Vector,
     size  : Vector,
@@ -56,9 +49,6 @@ TextBox  :: struct {
     type  : TextType,
     links : [] HyperLink,
 }
-
-ClickEvent :: proc(target: ^Button) -> bool
-
 Button   :: struct {
     pos   : Vector,
     size  : Vector,
@@ -67,7 +57,41 @@ Button   :: struct {
     userdata : rawptr,
     padding  : Vector,
     border  : bool,
+}
 
+
+TextType :: enum { HEADING, PARAGRAPH, CODE_BLOCK }
+ClickEvent :: proc(target: ^Box)
+
+HyperLink :: struct {
+    pos    : Vector,
+    size   : Vector,
+    target : ^docl.Entity,
+}
+
+Box :: struct {
+    relative : bool, // whether pos is relative to the parent
+    parent   : ^Box,
+
+    pos      : Vector,
+    size     : Vector,
+    offset   : Vector, 
+    tex      : Texture,
+
+    font     : Font, 
+    fmt_code : bool, 
+    entity   : ^docl.Entity,
+
+    type     : TextType,
+    text     : string,
+    links    : [] HyperLink,
+
+    click    : ClickEvent,
+    userdata : rawptr,
+
+    margin   : Vector,
+    padding  : Vector,
+    // border   : bool,
 }
 
 Scroll :: struct {
@@ -89,7 +113,8 @@ window : struct {
 
     events  : struct {
         scroll : Vector,
-        click  : MouseButton, // none of us give a shit
+        click  : MouseButton,
+        cancel_click : bool,
     },
 
     toolbar_h : i32, // maybe more "navbar" buf "nav" is 3 symbols.
@@ -97,16 +122,12 @@ window : struct {
 
     content_scroll    : Scroll, // scroll is negative!!! 
     sidebar_scroll    : Scroll, // .pos can never be positive
+    search_scroll     : Scroll,
     dragged_scrollbar : ^Scroll,
 
     toolbar_search : Search,
     active_search  : ^Search,
-    search_panel   : struct {
-        pos    : Vector,
-        size   : Vector,
-        offset : Vector,
-        // content is in cache.query
-    }
+    search_panel   : Box
 }
 
 fonts : struct {
@@ -116,10 +137,10 @@ fonts : struct {
 }
 
 cache : struct {
-    body    : [dynamic] TextBox,
-    sidebar : [dynamic] Button,
-    toolbar : [dynamic] Button,
-    search  : [dynamic] Button, // search panel results
+    body    : [dynamic] Box,
+    sidebar : [dynamic] Box,
+    toolbar : [dynamic] Box,
+    search  : [dynamic] Box, // search panel results
     
     //              ent.name pos.y
     positions : map [string] i32
@@ -141,19 +162,18 @@ initialize_window :: proc() {// {{{
 
     assert( ttf.Init() >= 0, "Failed to get True Type Font support" )
 
-    fonts.regular = ttf.OpenFont("font-regular.ttf",   CONFIG_FONT_SIZE    )
-    fonts.mono    = ttf.OpenFont("font-monospace.ttf", CONFIG_FONT_SIZE    )
-    fonts.large   = ttf.OpenFont("font-regular.ttf",   CONFIG_FONT_SIZE * 2)
+    fonts.regular = ttf.OpenFont("font-regular.ttf",   CONFIG_FONT_SIZE)
+    fonts.mono    = ttf.OpenFont("font-monospace.ttf", CONFIG_FONT_SIZE)
+    fonts.large   = ttf.OpenFont("font-regular.ttf",   CONFIG_LARGE_FONT_SIZE)
 
     window.toolbar_h = 24
     window.sidebar_w = 256
 
     sdl.GetWindowSize(window.handle, &window.size.x, &window.size.y)
 
-    everything, ok := docl.load("cache/core@os.odin-doc")
-    assert(ok)
-    cache_body(everything)
+    everything, ok := docl.load("cache/core@os.odin-doc"); assert(ok)
     current_everything = everything
+    cache_body(everything)
 
     cache_sidebar()
     cache_toolbar()
@@ -201,9 +221,53 @@ render_scrollbar :: proc(pos: Vector, scroll: ^Scroll) {
 
 }
 
+render_texture :: proc(texture: Texture, pos: Vector, size: Vector) {
+    sdl.RenderCopy(window.renderer, texture, 
+        &{ 0, 0, size.x, size.y }, &{ pos.x, pos.y, size.x, size.y })
+} 
+
+render_boxes :: proc(boxes: [] Box, scroll: ^Scroll) {
+    offset_y := scroll.pos
+    for &box in boxes {
+        pos  := box.pos + box.offset + { 0, offset_y }
+        size := box.size
+
+        screen_pos := box.pos
+
+        if box.relative && box.parent != nil {
+            pos += box.parent.pos + box.parent.offset 
+            screen_pos += box.parent.pos + box.parent.offset 
+        }
+        
+        render_texture(box.tex, pos, size)
+        
+        if box.click != nil && clicked_in(screen_pos, size) { 
+            box.click(&box) 
+        }
+
+        for link in box.links {
+            y := link.pos.y + offset_y
+            sdl.RenderDrawLine(window.renderer, 
+                link.pos.x, y + link.size.y, link.pos.x + link.size.x, y + link.size.y)
+
+            if window.events.click == .LEFT &&
+               intersects(window.mouse, { link.pos.x, y }, link.size) {
+                scroll.pos, _ = cache.positions[link.target.name]
+                scroll.pos -= 50
+                scroll.pos *= -1
+            }
+        }
+
+
+    }
+}
+
 render_frame :: proc() {// {{{
     sdl.GetMouseState(&window.mouse.x, &window.mouse.y)
 
+    sdl.SetRenderDrawColor(window.renderer, 255, 200, 200, 255)
+    sdl.RenderFillRect(window.renderer, 
+        &{ window.sidebar_w, window.toolbar_h, window.size.x, window.size.y })
     apply_scroll :: proc(scroll: ^Scroll) {
         scroll.vel += f32(window.events.scroll.y * 15)
         scroll.pos += i32(scroll.vel)
@@ -217,33 +281,17 @@ render_frame :: proc() {// {{{
     if intersects(window.mouse, Vector {0, 0}, Vector { window.sidebar_w, window.size.y }) {
         apply_scroll(&window.sidebar_scroll)
     }
+    // if intersects(window.mouse, Vector {0, 0}, Vector { window.sidebar_w, window.size.y }) {
+    //     apply_scroll(&window.search_scroll)
+    // }
 
     // ============================= CONTENT ============================= 
 
+    underline := colorscheme[Color.BLUE]
 
-    underline    := colorscheme[Color.BLUE]
 
     sdl.SetRenderDrawColor(window.renderer, underline.r, underline.g, underline.b, 255)
-    for element in cache.body {
-        offset_y := window.content_scroll.pos
-
-        using element
-        sdl.RenderCopy(window.renderer, tex, 
-            &{ 0, 0, size.x, size.y }, &{ pos.x, pos.y + offset_y, size.x, size.y })
-
-        for link in element.links {
-            y := link.pos.y + offset_y
-            sdl.RenderDrawLine(window.renderer, 
-                link.pos.x, y + link.size.y, link.pos.x + link.size.x, y + link.size.y)
-
-            if window.events.click == .LEFT &&
-               intersects(window.mouse, { link.pos.x, y }, link.size) {
-                window.content_scroll.pos, _ = cache.positions[link.target.name]
-                window.content_scroll.pos -= 50
-                window.content_scroll.pos *= -1
-            }
-        }
-    }
+    render_boxes(cache.body[:], &window.content_scroll)
 
     render_scrollbar(
         { window.search_panel.pos.x + window.search_panel.offset.x - CONFIG_SCROLLBAR_WIDTH, window.toolbar_h },
@@ -253,27 +301,17 @@ render_frame :: proc() {// {{{
 
     {
         panel := &window.search_panel
-        pos := panel.pos + panel.offset 
+        pos   := panel.pos + panel.offset 
+        size  := panel.size 
 
         bar := colorscheme[.BG2]
         sdl.SetRenderDrawColor(window.renderer, bar.r, bar.g, bar.b, bar.a)
         sdl.RenderFillRect(window.renderer, &{ pos.x, pos.y, panel.size.x, panel.size.y })
 
-        if window.events.click != .NONE && intersects(window.mouse, pos, panel.size) {
-            panel.offset.x = -panel.size.x if panel.offset.x != -panel.size.x else -15
-        }
+        render_boxes(cache.search[:], &window.search_scroll)
 
-        for &element in cache.search {
-            offset_y := i32(0)
-            pos = element.pos + panel.pos + panel.offset 
-
-            sdl.RenderCopy(window.renderer, element.tex, 
-                &{ 0, 0, element.size.x, element.size.y }, 
-                &{ pos.x, pos.y + offset_y, element.size.x, element.size.y })
-
-            if intersects(window.mouse - { 0, offset_y }, pos, element.size) &&
-               window.events.click == .LEFT &&
-               element.click != nil { element.click(&element) }
+        if panel.click != nil && clicked_in(pos, size) {
+            panel.click(panel)
         }
     }
 
@@ -283,18 +321,7 @@ render_frame :: proc() {// {{{
     sdl.SetRenderDrawColor(window.renderer, bar.r, bar.g, bar.b, bar.a)
     sdl.RenderFillRect(window.renderer, &{ 0, 0, window.sidebar_w, window.size.y })
 
-    for &element in cache.sidebar {
-        offset_y := window.sidebar_scroll.pos
-
-        using element
-        sdl.RenderCopy(window.renderer, tex, 
-            &{ 0, 0, size.x, size.y }, &{ pos.x, pos.y + offset_y, size.x, size.y })
-
-        if intersects(window.mouse - { 0, offset_y }, element.pos, element.size) &&
-           window.events.click == .LEFT &&
-           element.click != nil { element.click(&element) }
-    }
-
+    render_boxes(cache.sidebar[:], &window.sidebar_scroll)
 
     render_scrollbar({ window.sidebar_w - CONFIG_SCROLLBAR_WIDTH, window.toolbar_h }, &window.sidebar_scroll)
 
@@ -310,13 +337,13 @@ render_frame :: proc() {// {{{
         sdl.RenderCopy(window.renderer, tex, 
             &{ 0, 0, size.x, size.y }, &{ pos.x, pos.y, size.x, size.y })
 
-        if element.border {
-            border := colorscheme[.FG2]
-            sdl.SetRenderDrawColor(window.renderer, border.r, border.g, border.b, border.a)
-            border_pos  := element.pos  - element.padding/2        // + offset_y for other buttons
-            border_size := element.size + element.padding
-            sdl.RenderDrawRect(window.renderer, &{ border_pos.x, border_pos.y, border_size.x, border_size.y })
-        }
+        // if element.border {
+        //     border := colorscheme[.FG2]
+        //     sdl.SetRenderDrawColor(window.renderer, border.r, border.g, border.b, border.a)
+        //     border_pos  := element.pos  - element.padding/2        // + offset_y for other buttons
+        //     border_size := element.size + element.padding
+        //     sdl.RenderDrawRect(window.renderer, &{ border_pos.x, border_pos.y, border_size.x, border_size.y })
+        // }
 
         if intersects(window.mouse - { 0, 0 }, element.pos, element.size) &&
            window.events.click == .LEFT &&
@@ -333,6 +360,32 @@ render_frame :: proc() {// {{{
     
 }// }}}
 
+// the font and code_block arguments are, basically, mutually exclusive
+place_box :: proc(out: ^[dynamic] Box, text: string, pos: ^Vector, template: Box) {
+    assert(out != nil && pos != nil)
+    assert(template.font != nil || template.fmt_code)
+    if len(text) == 0 do return
+
+    box: Box = template
+    box.text = text
+    if template.fmt_code {
+        surface: ^sdl.Surface
+        surface, box.links = cache_code_block(current_everything, text)
+        box.tex  = sdl.CreateTextureFromSurface(window.renderer, surface)
+        box.size = { surface.w, surface.h }
+        sdl.FreeSurface(surface)
+
+    } else {
+        box.tex, box.size = text_to_texture(text, true, template.font)
+    }
+
+    box.pos = pos^
+    pos.y += box.size.y + box.margin.y
+
+    for &link in box.links { link.pos += box.pos }
+    append(out, box)
+    
+}
 
 
 cache_body :: proc(everything: docl.Everything) {// {{{
@@ -341,214 +394,110 @@ cache_body :: proc(everything: docl.Everything) {// {{{
         defer fperf[#location().procedure] += tick_diff(__start, tick_now())
     }    
     
-    is_any_kind :: proc(a: doc.Entity_Kind, b: ..doc.Entity_Kind) -> bool { return is_any(a, ..b) }
-
-    cache_text :: proc(everything: docl.Everything, str: string, type: TextType) -> (texture: Texture, size: Vector, links: [] HyperLink) {// {{{
-        when MEASURE_PERFORMANCE {
-            __start := tick_now() 
-            defer fperf[#location().procedure] += tick_diff(__start, tick_now())
-        }
-
-        text :: ttf.RenderUTF8_Blended_Wrapped
-        cstr :: strings.clone_to_cstring        // TODO I can now replace with fast_str_to_cstr
-                                                // OR later replace with custom RenderText
-        font  := fonts.regular
-        color : RGBA = { 127, 0, 0, 255 }
-        switch type {
-        case .HEADING   : font = fonts.large;   color = colorscheme[.FG1]
-        case .PARAGRAPH :                       color = colorscheme[.FG1]
-        case .CODE_BLOCK: font = fonts.mono;    color = { 255, 255, 255, 255 } // colorscheme[.CODE]
-        }
-        
-        if type == .CODE_BLOCK {
-            s, links := cache_code_block(everything, str)
-            defer  sdl.FreeSurface(s)
-            return sdl.CreateTextureFromSurface(window.renderer, s), { s.w, s.h }, links
-        }
-
-        surface := text(font, cstr(str, context.temp_allocator), color, u32(window.size.x - window.sidebar_w))
-        defer  sdl.FreeSurface(surface)
-        return sdl.CreateTextureFromSurface(window.renderer, surface), { surface.w, surface.h }, {}
+    register_for_scroll :: proc(name: string, pos: Vector) {
+        cache.positions[name] = pos.y
+        window.content_scroll.max = pos.y
     }
 
-    place_text :: proc(
-        everything: docl.Everything,
-        pos: ^Vector, str: string, type: TextType, 
-        entity: ^docl.Entity = nil, 
-        caller := #caller_location) {
-
-        when MEASURE_PERFORMANCE {
-            __start := tick_now() 
-            defer fperf[#location().procedure] += tick_diff(__start, tick_now())
-        }
-        fmt.assertf(str != "", "called from: %v\n", caller)
-        texture : Texture
-        size    : Vector
-        element : TextBox
-        links   : [] HyperLink
-        
-        texture, size, links = cache_text(everything, str, type)
-        defer  pos.y += size.y + 4
-
-        element.pos   = pos^
-        element.size  = size
-        element.tex   = texture
-        element.text  = str
-        element.type  = type
-        element.links = links
-
-        for &link in links {
-            link.pos += element.pos
-        }
-
-        if entity != nil {
-            cache.positions[entity.name] = pos.y
-        }
-
-        window.content_scroll.max = pos.y + size.y
-        
-        append(&cache.body, element)
-
-    }// }}}
-    
     clear(&cache.body)
 
-    // === STATE TO BE MODIFIED ===
+    template      : Box = { font = fonts.regular, margin = { 0, 4 } } 
+    template_code : Box = { fmt_code = true,      margin = { 0, 4 } } 
     pos : Vector = { window.sidebar_w + 10, window.toolbar_h + 10 }
 
     the_package := everything.initial_package
 
-    place_text(everything, &pos, the_package.name, .HEADING)
+    place_box(&cache.body, the_package.name, &pos, { font = fonts.large, margin = { 0, 12 } })
     if len(the_package.docs) > 0 {
-        place_text(everything, &pos, the_package.name, .PARAGRAPH)
+        place_box(&cache.body, the_package.docs, &pos, template)
     }
 
     for _, entity in the_package.entities {
-        if entity.kind == .Type_Name {
-            place_text(everything, &pos, format_code_block(entity), .CODE_BLOCK, entity = entity)
-
-            if len(entity.docs) != 0 {
-                place_text(everything, &pos, entity.docs, .PARAGRAPH)
-            }
+        if entity.kind == .Type_Name { // <--
+            register_for_scroll(entity.name, pos)
+            place_box(&cache.body, format_code_block(entity), &pos, template_code)
+            place_box(&cache.body, entity.docs, &pos, template)
         }
     }
-
 
     for _, entity in the_package.entities {
         if entity.kind == .Procedure {
-            place_text(everything, &pos, format_code_block(entity), .CODE_BLOCK, entity = entity)
-
-            if len(entity.docs) != 0 {
-                place_text(everything, &pos, entity.docs, .PARAGRAPH)
-            }
+            register_for_scroll(entity.name, pos)
+            place_box(&cache.body, format_code_block(entity), &pos, template_code)
+            place_box(&cache.body, entity.docs, &pos, template)
         }
     }
 
-
     for _, entity in the_package.entities {
         if entity.kind == .Proc_Group {
-            place_text(everything, &pos, format_code_block(entity), .CODE_BLOCK, entity = entity)
-
-            if len(entity.docs) != 0 {
-                place_text(everything, &pos, entity.docs, .PARAGRAPH)
-            }
+            register_for_scroll(entity.name, pos)
+            place_box(&cache.body, format_code_block(entity), &pos, template_code)
+            place_box(&cache.body, entity.docs, &pos, template)
         }
     }
 
     for _, entity in the_package.entities {
         if entity.kind == .Constant || entity.kind == .Variable {
-            place_text(everything, &pos, format_code_block(entity), .CODE_BLOCK, entity = entity)
-
-            if len(entity.docs) != 0 {
-                place_text(everything, &pos, entity.docs, .PARAGRAPH)
-            }
+            register_for_scroll(entity.name, pos)
+            place_box(&cache.body, format_code_block(entity), &pos, template_code)
+            place_box(&cache.body, entity.docs, &pos, template)
         }
     }
 
 }// }}}
 
 cache_sidebar :: proc() {// {{{
-    cache_text :: proc(str: string, large: bool) -> (texture: Texture, size: Vector) {
-        text :: ttf.RenderText_Blended
-        cstr :: strings.clone_to_cstring        // TODO I can now replace with fast_str_to_cstr
-                                                // OR later replace with custom RenderText
-        font  := fonts.large if large else fonts.regular
-        color : RGBA = colorscheme[.FG2]
-        
-        surface := text(font, cstr(str, context.temp_allocator), color)
-        defer  sdl.FreeSurface(surface)
-        return sdl.CreateTextureFromSurface(window.renderer, surface), { surface.w, surface.h }
-    }
 
-    files := make([dynamic] string, 0, 128, context.temp_allocator)
-    get_files :: proc(out: ^[dynamic] string, dir: [] os.File_Info, level := 0) {
-        for item in dir {
-            append(out, item.name)
-
-            if item.type == .Directory {
-                file_list, err1 := os.read_all_directory_by_path(item.fullpath, context.temp_allocator)
-                if err1 == nil {
-                    get_files(out, file_list, level + 1)
-                }
-            }
-        }
-    }
-
-    sidebar_click_event_handler :: proc(target: ^Button) -> bool {
-        everything, ok := docl.load((transmute(^string) target.userdata)^)
-        if ok {
-            cache_body(everything)
-        }
-        return false
+    sidebar_click_event_handler :: proc(target: ^Box) {
+        if target.userdata == nil do return 
+        path := (transmute(^string) target.userdata)^
+        everything, ok := docl.load(strings.concatenate({ "cache/", path }, context.temp_allocator))
+        if ok { cache_body(everything) }
     }
     
-    file_list, err1 := os.read_all_directory_by_path("cache", context.temp_allocator)
+    // ======= SETUP =======
+    file_details, err1 := os.read_all_directory_by_path("cache", context.temp_allocator)
     if err1 != nil { /*rebuild cache*/ panic("need to rebuild cache") }
-    get_files(&files, file_list)
+    file_names := make([] string, len(file_details), context.temp_allocator)
+    for file, i in file_details {
+        file_names[i] = file.name
+    }
 
-    slice.sort(files[:])
+    slice.sort(file_names[:])
     
-    pos := Vector { 0, window.toolbar_h }
-    path: [8] string
+    template := Box {
+        font = fonts.regular,
+        click = sidebar_click_event_handler           
+    }
+    pos := Vector { 4, window.toolbar_h }
+    last_category: string
 
-    for file in files {
-        filepath := file
+    // ======= THE MEAT =======
+    for file in file_names {
+        template.userdata = rawptr(new_clone(strings.clone(file) or_else ""))
+
         file := file
         if strings.ends_with(file, ".odin-doc") { 
             file = file[:len(file) - len(".odin-doc")] 
         }
-
-        parts := strings.split(file, "@")
-        level := i32(len(parts)) - 1
-        for part, i in parts {
-            if part == path[i] do continue
-            path[i] = part
-
-            if i == len(parts) - 1 do break
-
-            button: Button
-            button.pos = pos + { i32(i) * 16, 0 }
-            button.tex, button.size = cache_text(part, i == 0)
-            button.click = sidebar_click_event_handler
-            button.userdata = rawptr(new_clone(fmt.aprint("./cache/", filepath, sep = "")))
-
-            append(&cache.sidebar, button)
-            
-            pos.y += button.size.y + 2
-               
+        
+        if category := strings.index(file, "@"); category != -1 {
+            if last_category != file[:category] {
+                place_box(&cache.sidebar, file[:category], &pos, 
+                    { font = fonts.large })
+            }
+            last_category = file[:category]
         }
 
-        for i in (len(parts)+1)..<8 { path[i] = "" }
+        levels := strings.count(file, "@") - 1
+        if levels > -1 {
+            file = file[strings.last_index(file, "@")+1:]
+        }
 
-        button: Button
-        button.pos = pos + { level * 16, 0 }
-        button.tex, button.size = cache_text(parts[len(parts) - 1], false)
-        button.click = sidebar_click_event_handler
-        button.userdata = rawptr(new_clone(fmt.aprint("./cache/", filepath, sep = "")))
+        pos.x += i32(levels) * 16
+        place_box(&cache.sidebar, file, &pos, template)
+        pos.x -= i32(levels) * 16
 
-        append(&cache.sidebar, button)
-        
-        pos.y += button.size.y + 2
         window.sidebar_scroll.max = pos.y
     }
 
@@ -560,8 +509,6 @@ cache_toolbar :: proc() {
     // ? ? ? ? ? ~ .* /search  \/  /\   ? ? ? ?
 
     clear(&cache.toolbar)
-
-    button: Button
 
     make_toolbar_search()
 }

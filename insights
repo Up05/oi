@@ -89,7 +89,7 @@ entries := doc.from_array(&header.base, the_package.entries)
 for entry in entries {
     declaration := entities[entry.entity]
     is_any_kind :: proc(a: doc.Entity_Kind, b: ..doc.Entity_Kind) -> bool { return is_any(a, ..b) }
-    if is_any_kind(declaration .kind, .Type_Name) {
+    if declaration.kind == .Type_Name {
         fmt.println(to_string(data, declaration.name), "::", to_string(data, declaration.init_string))
 
         // ... do shit with the type declaration now...

@@ -26,6 +26,12 @@ Search :: struct {
 }
 
 make_toolbar_search :: proc() {
+    search_result_click_handler :: proc(target: ^Box) {
+        window.content_scroll.pos = -cache.positions[target.text]
+        window.events.cancel_click = true
+    }
+
+
     search: Search
 
     search.pos =  { window.sidebar_w + 4, 4 }
@@ -55,45 +61,42 @@ make_toolbar_search :: proc() {
             return a.kind < b.kind if a.kind != b.kind else a.name < b.name
         })
 
-        place_button :: proc(text: string, should_clone: bool, pos: ^Vector, font := fonts.regular) {
-            button := Button {
-                pos = pos^,
-            }
-            button.tex, button.size = text_to_texture(text, should_clone, font)
-            append(&cache.search, button)
-
-            pos.y += button.size.y
-        }
-
         pos: Vector = { 4, 4 }
+        template := Box { 
+            relative = true, 
+            parent   = &window.search_panel, 
+            click    = search_result_click_handler
+        }
 
         // i'm not importing the fucking dock-format
         prev_kind := result[len(result) - 1].kind
         prev_kind = auto_cast 0
         for entity in result {
-
+            
+            template.font = fonts.large 
             if prev_kind != entity.kind {
                 #partial switch entity.kind {
-                case .Procedure: place_button("Procedures", true, &pos, fonts.large)
-                case .Type_Name: place_button("Types",      true, &pos, fonts.large)
-                case .Constant: place_button("Constants",   true, &pos, fonts.large)
-                case .Variable: place_button("Variables",   true, &pos, fonts.large)
+                case .Procedure: place_box(&cache.search, "Procedures", &pos, template)
+                case .Type_Name: place_box(&cache.search, "Types",      &pos, template)
+                case .Constant:  place_box(&cache.search, "Constants",  &pos, template)
+                case .Variable:  place_box(&cache.search, "Variables",  &pos, template)
                 }
                 prev_kind = entity.kind
             }
-            
-            fmt.println(entity.name, entity.kind)
-            place_button(entity.name, false, &pos, fonts.mono)
 
-            fmt.println(entity.name)
+            template.font = fonts.mono 
+            place_box(&cache.search, entity.name, &pos, template)
         }
+
+        assert(window.search_panel.click != nil)
+        window.search_panel.click(&window.search_panel)
     }
 
     defer window.toolbar_search = search
 }
 
 render_search :: proc(search: ^Search) {
-    if search.texture != nil {
+    if search.texture != nil { 
         sdl.DestroyTexture(search.texture)
     }
     delete_slice(search.offsets)
@@ -315,36 +318,38 @@ draw_search :: proc(search: Search, is_active: bool) {
     FG := colorscheme[.FG2]
     BG := colorscheme[.BLUE]
 
-    if is_active {
-        if search.cursor != search.select && max(search.cursor, search.select) < len(search.offsets) {
-            x := i32(search.offsets[min(search.cursor, search.select)])
-            w := i32(search.offsets[max(search.cursor, search.select)]) - x 
-                
-            sdl.SetRenderDrawColor(window.renderer, BG.r, BG.g, BG.b, BG.a)
-            sdl.RenderFillRect(window.renderer, &{ search.pos.x + x, search.pos.y, w, search.pos.y + search.size.y })
-        }
+    selecting_range := search.cursor != search.select
+    just_in_case    := max(search.cursor, search.select) < len(search.offsets)
+
+    if is_active && selecting_range && just_in_case {
+        x := i32(search.offsets[min(search.cursor, search.select)])
+        w := i32(search.offsets[max(search.cursor, search.select)]) - x 
+            
+        sdl.SetRenderDrawColor(window.renderer, BG.r, BG.g, BG.b, BG.a)
+        sdl.RenderFillRect(window.renderer, &{ search.pos.x + x, search.pos.y, w, search.pos.y + search.size.y })
     }
 
-    sdl.RenderCopy(
-        window.renderer, search.texture, 
-        &{ 0, 0, search.size.x, search.size.y }, 
-        &{ search.pos.x, search.pos.y, search.size.x, search.size.y }    
-    )
+    render_texture(search.texture, search.pos, search.size)
 
-    if is_active {
-        if search.cursor == search.select && max(search.cursor, search.select) < len(search.offsets) {
-            x := i32(int(search.pos.x) + search.offsets[min(search.cursor, search.select)])
-            sdl.SetRenderDrawColor(window.renderer, FG.r, FG.g, FG.b, FG.a)
-            sdl.RenderDrawLine(window.renderer, x, i32(search.pos.y), x, i32(search.pos.y + search.size.y))
-        }
+    if is_active && !selecting_range && just_in_case  {
+        x := i32(int(search.pos.x) + search.offsets[min(search.cursor, search.select)])
+        sdl.SetRenderDrawColor(window.renderer, FG.r, FG.g, FG.b, FG.a)
+        sdl.RenderDrawLine(window.renderer, x, i32(search.pos.y), x, i32(search.pos.y + search.size.y))
     }
 }
 
-// I made this more generic, cause idk where I'm gonna put it at all...
-// I'll just put to the side for now, I guess, as like a second open-able sidebar.
+// I made this more generic, cause idk where I'm gonna put it...
+// Although, for now, I kinda like it sticking out the side when user wants...
 make_search_panel :: proc() {
-    window.search_panel.pos  = { window.size.x, window.toolbar_h }
-    // default width, may change depending on result length?
-    window.search_panel.size = { 300, window.size.y - window.toolbar_h } 
-    window.search_panel.offset = { -15, 0 }
+    panel := &window.search_panel
+    panel.pos  = { window.size.x, window.toolbar_h }
+    panel.size = { CONFIG_SEARCH_PANEL_OPEN, window.size.y - window.toolbar_h } 
+    panel.offset = { -CONFIG_SEARCH_PANEL_CLOSED, 0 }
+    panel.click = proc(target: ^Box) {
+        CLOSED := i32(CONFIG_SEARCH_PANEL_CLOSED)
+        OPENED := i32(CONFIG_SEARCH_PANEL_OPEN)
+
+        target.offset.x = -target.offset.x ~ (OPENED ~ CLOSED) // ~ is xor here (for toggling)
+        target.offset.x *= -1
+    }
 }
