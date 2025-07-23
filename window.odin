@@ -4,6 +4,8 @@ import "base:runtime"
 import "core:fmt"
 import "core:strings"
 import "core:slice"
+import "core:mem"
+import "core:thread"
 import os "core:os/os2"
 import sdl "vendor:sdl2"
 import "vendor:sdl2/ttf"
@@ -11,12 +13,12 @@ import doc "core:odin/doc-format"
 import docl "doc-loader"
 
 // 1 level of indirection from SDL, 
-// just in case I want to change it back to Raylib or smth
+// TODO expand
 // ====================================
-Image   :: ^sdl.Surface
+Surface :: ^sdl.Surface
 Texture :: ^sdl.Texture
 Font    :: ^ttf.Font
-RGBA    :: sdl.Color
+RGBA    ::  sdl.Color
 // ====================================
 
 // ===== TYPES ======
@@ -41,25 +43,6 @@ MouseButton :: enum {
 
 Vector :: [2] i32
 
-TextBox  :: struct {
-    pos   : Vector,
-    size  : Vector,
-    tex   : Texture,
-    text  : string,
-    type  : TextType,
-    links : [] HyperLink,
-}
-Button   :: struct {
-    pos   : Vector,
-    size  : Vector,
-    tex   : Texture,
-    click : ClickEvent,
-    userdata : rawptr,
-    padding  : Vector,
-    border  : bool,
-}
-
-
 TextType :: enum { HEADING, PARAGRAPH, CODE_BLOCK }
 ClickEvent :: proc(target: ^Box)
 
@@ -67,6 +50,12 @@ HyperLink :: struct {
     pos    : Vector,
     size   : Vector,
     target : ^docl.Entity,
+}
+
+Scroll :: struct {
+    pos : i32, 
+    vel : f32,
+    max : i32,
 }
 
 Box :: struct {
@@ -94,12 +83,6 @@ Box :: struct {
     // border   : bool,
 }
 
-Scroll :: struct {
-    pos : i32, 
-    vel : f32,
-    max : i32,
-}
-
 // ===== GLOBAL STATE ======
 
 colorscheme : [Color] RGBA
@@ -117,17 +100,17 @@ window : struct {
         cancel_click : bool,
     },
 
-    toolbar_h : i32, // maybe more "navbar" buf "nav" is 3 symbols.
-    sidebar_w : i32, // yup... just toolbar_height... in pixels...
+    toolbar_h : i32,  // yup... just toolbar_height... in pixels...
+    sidebar_w : i32,  // maybe more "navbar" but "nav" is 3 symbols.
 
-    content_scroll    : Scroll, // scroll is negative!!! 
-    sidebar_scroll    : Scroll, // .pos can never be positive
-    search_scroll     : Scroll,
+    content_scroll    :  Scroll, // scroll is negative!!! 
+    sidebar_scroll    :  Scroll, // .pos can never be positive
+    search_scroll     :  Scroll,
     dragged_scrollbar : ^Scroll,
 
-    toolbar_search : Search,
     active_search  : ^Search,
-    search_panel   : Box
+    toolbar_search :  Search,
+    search_panel   :  Box
 }
 
 fonts : struct {
@@ -146,9 +129,21 @@ cache : struct {
     positions : map [string] i32
 }
 
+
+alloc : struct {
+    body    : mem.Allocator,
+    sidebar : mem.Allocator,
+}
+
+pools : struct {
+    body : thread.Pool,
+}
+
 current_everything: docl.Everything
 
 initialize_window :: proc() {// {{{
+    alloc.body = make_arena_alloc()
+    alloc.sidebar = make_arena_alloc()
 
     colorscheme = {
         .BG1  = to_rgba(CONFIG_UI_BG1 ),
@@ -171,10 +166,9 @@ initialize_window :: proc() {// {{{
 
     sdl.GetWindowSize(window.handle, &window.size.x, &window.size.y)
 
-    everything, ok := docl.load("cache/core@os.odin-doc"); assert(ok)
-    current_everything = everything
-    cache_body(everything)
+    open_package("cache/core@os.odin-doc")
 
+    cache.sidebar = make([dynamic] Box, alloc.sidebar) 
     cache_sidebar()
     cache_toolbar()
 
@@ -184,10 +178,40 @@ initialize_window :: proc() {// {{{
 
 }// }}}
 
+open_package :: proc(file: string) {
+
+    clear(&cache.body)
+    clear(&cache.search)
+    clear(&cache.positions)
+    clear(&uncached_code_blocks)
+
+    cache.body      = make([dynamic] Box, alloc.body) 
+    cache.search    = make([dynamic] Box, alloc.body) 
+    cache.positions = make(map [string] i32, alloc.body) 
+    uncached_code_blocks = make([dynamic] CodeBlockCacheData, alloc.body) 
+
+    free_all(alloc.body) // <-- !!!
+
+    // old core:os has processor_core_count
+    // but I would rather not use it here
+    // and I can quite safely assume that all
+    // target computers will have >= 4 cores
+    thread.pool_init(&pools.body, alloc.body, 3) 
+    thread.pool_start(&pools.body)
+
+    everything, ok := docl.load(file, allocator = alloc.body); assert(ok)
+    current_everything = everything
+    cache_body(everything)
+
+}
+
 handle_resize :: proc() {
+    fmt.println("window resized")
     prev_size := window.size
     sdl.GetWindowSize(window.handle, &window.size.x, &window.size.y)
 
+    make_search_panel()
+    // cache_body(current_everything)
     // rebuild the cache...
 }
 
@@ -241,7 +265,7 @@ render_boxes :: proc(boxes: [] Box, scroll: ^Scroll) {
         
         render_texture(box.tex, pos, size)
         
-        if box.click != nil && clicked_in(screen_pos, size) { 
+        if box.click != nil && clicked_in(pos, size) { 
             box.click(&box) 
         }
 
@@ -288,7 +312,6 @@ render_frame :: proc() {// {{{
     // ============================= CONTENT ============================= 
 
     underline := colorscheme[Color.BLUE]
-
 
     sdl.SetRenderDrawColor(window.renderer, underline.r, underline.g, underline.b, 255)
     render_boxes(cache.body[:], &window.content_scroll)
@@ -369,12 +392,7 @@ place_box :: proc(out: ^[dynamic] Box, text: string, pos: ^Vector, template: Box
     box: Box = template
     box.text = text
     if template.fmt_code {
-        surface: ^sdl.Surface
-        surface, box.links = cache_code_block(current_everything, text)
-        box.tex  = sdl.CreateTextureFromSurface(window.renderer, surface)
-        box.size = { surface.w, surface.h }
-        sdl.FreeSurface(surface)
-
+        box.size = cache_code_block_deferred(out, len(out), current_everything, text)
     } else {
         box.tex, box.size = text_to_texture(text, true, template.font)
     }
@@ -394,12 +412,13 @@ cache_body :: proc(everything: docl.Everything) {// {{{
         defer fperf[#location().procedure] += tick_diff(__start, tick_now())
     }    
     
+
     register_for_scroll :: proc(name: string, pos: Vector) {
         cache.positions[name] = pos.y
         window.content_scroll.max = pos.y
     }
 
-    clear(&cache.body)
+    // context.allocator = alloc.body
 
     template      : Box = { font = fonts.regular, margin = { 0, 4 } } 
     template_code : Box = { fmt_code = true,      margin = { 0, 4 } } 
@@ -451,8 +470,7 @@ cache_sidebar :: proc() {// {{{
     sidebar_click_event_handler :: proc(target: ^Box) {
         if target.userdata == nil do return 
         path := (transmute(^string) target.userdata)^
-        everything, ok := docl.load(strings.concatenate({ "cache/", path }, context.temp_allocator))
-        if ok { cache_body(everything) }
+        open_package(strings.concatenate({ "cache/", path }, context.temp_allocator))
     }
     
     // ======= SETUP =======
@@ -474,7 +492,7 @@ cache_sidebar :: proc() {// {{{
 
     // ======= THE MEAT =======
     for file in file_names {
-        template.userdata = rawptr(new_clone(strings.clone(file) or_else ""))
+        template.userdata = rawptr(new_clone(strings.clone(file, alloc.sidebar) or_else "", alloc.sidebar))
 
         file := file
         if strings.ends_with(file, ".odin-doc") { 

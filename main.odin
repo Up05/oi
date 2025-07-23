@@ -1,6 +1,7 @@
 package main
 
 import "core:fmt"
+import "core:mem"
 import sdl "vendor:sdl2"
 
 // This is a programmer tool, might as well just make it suckless!
@@ -40,6 +41,14 @@ CONFIG_CODE_LINE_SPACING :: 2
 // get broken up into different lines
 CONFIG_WHAT_IS_LONG_PROC :: 50
 
+// keybinds
+// enum Category { ... }
+// enum Modifier { CTRL, SHIFT, ALT, SUPER/WINDOWS }
+// keys = {
+//    category = {
+//        { { CTRL, SHIFT }, { R }, recache_everything }
+//        ...
+
 
 // ===================================
 
@@ -69,7 +78,25 @@ take_break :: proc() {
 
 should_exit: bool
 main :: proc() {
-    defer {
+    when ODIN_DEBUG {
+		track: mem.Tracking_Allocator
+		mem.tracking_allocator_init(&track, context.allocator)
+		context.allocator = mem.tracking_allocator(&track)
+
+		defer {
+			if len(track.allocation_map) > 0 {
+				fmt.eprintf("=== %v allocations not freed: ===\n", len(track.allocation_map))
+				for _, entry in track.allocation_map {
+					fmt.eprintf("- %v bytes @ %v\n", entry.size, entry.location)
+				}
+			}
+			mem.tracking_allocator_destroy(&track)
+		}
+	}
+
+
+
+    defer { // performance bodge
         longest: int
         for func, _ in fperf {
             longest = max(longest, len(func))
@@ -88,6 +115,7 @@ main :: proc() {
 
     next_frame_target = sdl.GetTicks() + (1000 / CONFIG_MAX_FPS)
     for !should_exit {
+
         event: sdl.Event
         for sdl.PollEvent(&event) {
             #partial switch event.type {
@@ -103,10 +131,13 @@ main :: proc() {
             case: 
             }
         }
+
         sdl.SetRenderDrawColor(window.renderer, 0, 0, 0, 255)
         sdl.RenderClear(window.renderer)
 
         render_frame()
+
+        eat_uncached_code_block()
 
         sdl.RenderPresent(window.renderer)
         take_break()
@@ -116,6 +147,7 @@ main :: proc() {
         free_all(context.temp_allocator)
     }
 
+    free_all(alloc.body) // for tracking allocator
 
     sdl.DestroyWindow(window.handle)
     sdl.Quit()
@@ -124,7 +156,16 @@ main :: proc() {
 
 /*
 TODO:
-    
+
+    tabs (like mostly just cached stuff)
+      no split, but instead have "view" maybe?
+
+    resize
+    copy codeblock
+    open codeblock in editor
+    fzf for sidebar
+    search methods
+
   search:
     selection cursors
     maybe all_search_inputs: [dynamic] ^Search
@@ -139,7 +180,6 @@ TODO:
     load/highlight? files that have anything useful
 
   2. links 
-    links for the same package I can do right now
     for links to other packages
       make my own map of files to package aliasses to packages
         (parse the odin files when recaching everything)
@@ -153,9 +193,5 @@ TODO:
 
   4. (very easy) user libs
 
-  5. toolbar
-    I think, it would be nice to have this as a package specific thing honestly...
- 
 */
-
 

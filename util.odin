@@ -6,6 +6,9 @@ import "core:time"
 import "core:strings"
 import "core:unicode/utf8"
 
+import "core:mem"
+import "core:mem/virtual"
+
 import sdl "vendor:sdl2"
 import "vendor:sdl2/ttf"
 
@@ -20,12 +23,20 @@ fperf: map [string] time.Duration
     }    
 */ 
 
+make_arena_alloc :: proc() -> mem.Allocator {
+    arena := new(virtual.Arena)
+    _ = virtual.arena_init_growing(arena)
+    return virtual.arena_allocator(arena) 
+}
+
 intersects :: proc(a: Vector, b: Vector, b_size: Vector) -> bool {
     return a.x >= b.x && a.y >= b.y   &&   a.x <= b.x + b_size.x && a.y <= b.y + b_size.y
 }
 
 clicked_in :: proc(pos: Vector, size: Vector) -> bool {
-    return !window.events.cancel_click && intersects(window.mouse, pos, size) && window.events.click == .LEFT
+    return !window.events.cancel_click && 
+            window.events.click == .LEFT &&
+            intersects(window.mouse, pos, size)
 }
 
 proper_to_rgba :: proc(hex: u32) -> RGBA {
