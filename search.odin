@@ -27,29 +27,33 @@ Search :: struct {
 
 make_toolbar_search :: proc() {
     search_result_click_handler :: proc(target: ^Box) {
-        window.content_scroll.pos = -cache.positions[target.text]
+        tab := window.current_tab
+        base := tab.box_table[target.text]
         window.events.cancel_click = true
+        if base == nil do return
+        tab.scroll.pos = -(base.pos.y - window.toolbar_h)
     }
 
 
     search: Search
 
     search.pos =  { window.sidebar_w + 4, 4 }
-    search.texture, search.size = text_to_texture("[s]earch for items...", true)
+    search.texture, search.size = text_to_texture(" [s]earch for items...", true)
     search.offsets = make([] int, 1)
 
     search.onsubmit = proc(search: ^Search) {
-        for button in cache.search {
+        tab := window.current_tab
+        for button in tab.search {
             sdl.DestroyTexture(button.tex)
         }
-        clear(&cache.search)
+        clear(&tab.search)
 
         query := strings.to_string(search.text)
         result: [dynamic] ^docl.Entity 
         defer delete(result)
         
-        start_item_count := len(current_everything.initial_package.entities)
-        for name, entity in current_everything.initial_package.entities {
+        start_item_count := len(tab.everything.initial_package.entities)
+        for name, entity in tab.everything.initial_package.entities {
             if strings.starts_with(name, query) {
                 append(&result, entity)
             }
@@ -65,7 +69,8 @@ make_toolbar_search :: proc() {
         template := Box { 
             relative = true, 
             parent   = &window.search_panel, 
-            click    = search_result_click_handler
+            scroll   = &tab.search_scroll,
+            click    = search_result_click_handler,
         }
 
         // i'm not importing the fucking dock-format
@@ -76,16 +81,16 @@ make_toolbar_search :: proc() {
             template.font = fonts.large 
             if prev_kind != entity.kind {
                 #partial switch entity.kind {
-                case .Procedure: place_box(&cache.search, "Procedures", &pos, template)
-                case .Type_Name: place_box(&cache.search, "Types",      &pos, template)
-                case .Constant:  place_box(&cache.search, "Constants",  &pos, template)
-                case .Variable:  place_box(&cache.search, "Variables",  &pos, template)
+                case .Procedure: place_box(&tab.search, "Procedures", &pos, template)
+                case .Type_Name: place_box(&tab.search, "Types",      &pos, template)
+                case .Constant:  place_box(&tab.search, "Constants",  &pos, template)
+                case .Variable:  place_box(&tab.search, "Variables",  &pos, template)
                 }
                 prev_kind = entity.kind
             }
 
             template.font = fonts.mono 
-            place_box(&cache.search, entity.name, &pos, template)
+            place_box(&tab.search, entity.name, &pos, template)
         }
 
         assert(window.search_panel.click != nil)

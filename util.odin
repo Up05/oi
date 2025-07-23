@@ -23,6 +23,29 @@ fperf: map [string] time.Duration
     }    
 */ 
 
+package_name_from_path :: proc(file: string) -> string {
+    file := file
+    
+    if strings.ends_with(file, ".odin-doc") { 
+        file = file[:len(file) - len(".odin-doc")] 
+    }
+    
+    levels := strings.count(file, "@") - 1
+    if levels > -1 {
+        file = file[strings.last_index(file, "@")+1:]
+    }
+    
+    return file
+}
+
+ptr_sub :: proc(a, b: rawptr) -> int {
+    return transmute(int) a - transmute(int) b
+}
+
+tab_index_from_pointer :: proc(tab: ^Tab) -> int {
+    return ptr_sub(rawptr(tab), raw_data(window.tabs)) / size_of(Tab)
+}
+
 make_arena_alloc :: proc() -> mem.Allocator {
     arena := new(virtual.Arena)
     _ = virtual.arena_init_growing(arena)

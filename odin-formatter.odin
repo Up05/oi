@@ -332,13 +332,11 @@ CodeBlockCacheData :: struct {
     height          : i32,
 }
 
-uncached_code_blocks: [dynamic] CodeBlockCacheData
-
 eat_uncached_code_block :: proc() {
     text :: ttf.RenderUTF8_Blended
     
-    if len(uncached_code_blocks) <= 0 do return
-    data := pop_front(&uncached_code_blocks)
+    if len(window.current_tab.cache_queue) <= 0 do return
+    data := pop_front(&window.current_tab.cache_queue)
 
     main := sdl.CreateRGBSurfaceWithFormat(0, data.width, data.height, 32, auto_cast sdl.PixelFormatEnum.ARGB8888)
     sdl.SetSurfaceBlendMode(main, .NONE) // so I don't blend the textures twice
@@ -444,7 +442,7 @@ cache_code_block_deferred :: proc(out: ^[dynamic] Box, out_index: int, everythin
         height     = height
     }
 
-    append(&uncached_code_blocks, data)
+    append(&window.current_tab.cache_queue, data)
 
     return { width, height }
 }

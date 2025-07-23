@@ -58,9 +58,23 @@ Scroll :: struct {
     max : i32,
 }
 
+Tab :: struct {
+    ID            : int, // TODO for later
+    is_replacable : bool,
+    everything    : docl.Everything,
+    alloc         : mem.Allocator,
+    box_table     : map [string] ^Box,  // entity name to y offset
+    cache_queue   : [dynamic] CodeBlockCacheData,
+    children      : [dynamic] Box,
+    search        : [dynamic] Box,      // search results for the tab
+    scroll        : Scroll,
+    search_scroll : Scroll,
+}
+
 Box :: struct {
-    relative : bool, // whether pos is relative to the parent
-    parent   : ^Box,
+    relative : bool,    // whether pos is relative to the parent
+    parent   : ^Box,    // currently only used in search panel
+    scroll   : ^Scroll, // parent's scroll
 
     pos      : Vector,
     size     : Vector,
@@ -81,6 +95,7 @@ Box :: struct {
     margin   : Vector,
     padding  : Vector,
     // border   : bool,
+
 }
 
 // ===== GLOBAL STATE ======
@@ -103,15 +118,18 @@ window : struct {
     toolbar_h : i32,  // yup... just toolbar_height... in pixels...
     sidebar_w : i32,  // maybe more "navbar" but "nav" is 3 symbols.
 
-    content_scroll    :  Scroll, // scroll is negative!!! 
     sidebar_scroll    :  Scroll, // .pos can never be positive
-    search_scroll     :  Scroll,
     dragged_scrollbar : ^Scroll,
 
     active_search  : ^Search,
     toolbar_search :  Search,
-    search_panel   :  Box
+    search_panel   :  Box,
+
+    tabbar_tabs  : [dynamic] Box,
+    tabs         : [dynamic] Tab,
+    current_tab  : ^Tab,
 }
+
 
 fonts : struct {
     regular : ^ttf.Font,
@@ -120,15 +138,14 @@ fonts : struct {
 }
 
 cache : struct {
-    body    : [dynamic] Box,
+    // body    : [dynamic] Box,
     sidebar : [dynamic] Box,
     toolbar : [dynamic] Box,
-    search  : [dynamic] Box, // search panel results
+    // search  : [dynamic] Box, // search panel results
     
     //              ent.name pos.y
-    positions : map [string] i32
+    // positions : map [string] i32
 }
-
 
 alloc : struct {
     body    : mem.Allocator,
@@ -138,8 +155,6 @@ alloc : struct {
 pools : struct {
     body : thread.Pool,
 }
-
-current_everything: docl.Everything
 
 initialize_window :: proc() {// {{{
     alloc.body = make_arena_alloc()
@@ -161,7 +176,7 @@ initialize_window :: proc() {// {{{
     fonts.mono    = ttf.OpenFont("font-monospace.ttf", CONFIG_FONT_SIZE)
     fonts.large   = ttf.OpenFont("font-regular.ttf",   CONFIG_LARGE_FONT_SIZE)
 
-    window.toolbar_h = 24
+    window.toolbar_h = 48
     window.sidebar_w = 256
 
     sdl.GetWindowSize(window.handle, &window.size.x, &window.size.y)
@@ -172,25 +187,87 @@ initialize_window :: proc() {// {{{
     cache_sidebar()
     cache_toolbar()
 
-    // TODO temp
+    // temp, later don't make the search active by default
     window.active_search = &window.toolbar_search
     make_search_panel()
 
 }// }}}
 
+refresh_tabbar :: proc() {
+    x: i32
+    if len(window.tabbar_tabs) > 0 do x = window.tabbar_tabs[0].pos.x
+    for &tab in window.tabbar_tabs {
+        tab.pos.x = x
+        x += tab.size.x + tab.margin.x
+    }
+}
+
+new_tab :: proc(name: string) {
+    tab: Tab
+    tab.alloc = make_arena_alloc()
+    tab.is_replacable = name == CONFIG_EMPTY_TAB_NAME
+    append(&window.tabs, tab)
+    window.current_tab = &window.tabs[len(window.tabs) - 1]
+
+    tab_click_handler :: proc(target: ^Box) {
+        tab := cast(^Tab) target.userdata
+        window.current_tab = tab
+    }
+
+    template: Box = {
+        font     = fonts.regular,
+        click    = tab_click_handler,
+        userdata = rawptr(window.current_tab),
+        margin   = { 2, 0 },
+    }
+    
+    x: i32 = 4
+    for tab in window.tabbar_tabs {
+        x += tab.size.x + template.margin.x
+    }
+
+    pos := Vector { window.sidebar_w + x, window.toolbar_h / 2 + 8 }
+    place_box(&window.tabbar_tabs, package_name_from_path(name), &pos, template) 
+}
+
+close_tab :: proc(tab: ^Tab) {
+
+    index := tab_index_from_pointer(window.current_tab)
+    ordered_remove(&window.tabs, index)
+    ordered_remove(&window.tabbar_tabs, index)
+
+    clear(&tab.box_table)
+    clear(&tab.cache_queue)
+    clear(&tab.children)
+    clear(&tab.search)
+
+    free_all(tab.alloc) // <-- !!!
+
+    tab.scroll = {}
+
+    if len(window.tabs) > 0 {
+        window.current_tab = &window.tabs[len(window.tabs) - 1]
+        refresh_tabbar()
+    } else {
+        new_tab("empty tab")
+    }
+}
+
+// I would honestly prefer this to be a map of string* <-> function pointer
+// and in sidebar.click
 open_package :: proc(file: string) {
+    
+    // later have "empty tab"
+    // if window.current_tab != nil {
+    //     close_tab(window.current_tab)
+    // }
+    
+    new_tab(file)
 
-    clear(&cache.body)
-    clear(&cache.search)
-    clear(&cache.positions)
-    clear(&uncached_code_blocks)
-
-    cache.body      = make([dynamic] Box, alloc.body) 
-    cache.search    = make([dynamic] Box, alloc.body) 
-    cache.positions = make(map [string] i32, alloc.body) 
-    uncached_code_blocks = make([dynamic] CodeBlockCacheData, alloc.body) 
-
-    free_all(alloc.body) // <-- !!!
+    window.current_tab.box_table    = make(map [string] ^Box, window.current_tab.alloc)
+    window.current_tab.children     = make([dynamic] Box,     window.current_tab.alloc)
+    window.current_tab.search       = make([dynamic] Box,     window.current_tab.alloc)
+    window.current_tab.cache_queue  = make([dynamic] CodeBlockCacheData, 0, 32, window.current_tab.alloc)
 
     // old core:os has processor_core_count
     // but I would rather not use it here
@@ -199,9 +276,11 @@ open_package :: proc(file: string) {
     thread.pool_init(&pools.body, alloc.body, 3) 
     thread.pool_start(&pools.body)
 
-    everything, ok := docl.load(file, allocator = alloc.body); assert(ok)
-    current_everything = everything
-    cache_body(everything)
+    ok: bool
+    window.current_tab.everything, ok = docl.load(file, window.current_tab.alloc)
+    assert(ok)
+
+    cache_body()
 
 }
 
@@ -222,6 +301,10 @@ render_scrollbar :: proc(pos: Vector, scroll: ^Scroll) {
 
     w := i32(CONFIG_SCROLLBAR_WIDTH)
     h := window.size.y - pos.y
+
+    if scroll.max < window.size.y {
+        return
+    }
 
     sdl.SetRenderDrawColor(window.renderer, bg.r, bg.g, bg.b, 255)
     sdl.RenderFillRect(window.renderer, &{ pos.x, pos.y, w, h })
@@ -250,18 +333,23 @@ render_texture :: proc(texture: Texture, pos: Vector, size: Vector) {
         &{ 0, 0, size.x, size.y }, &{ pos.x, pos.y, size.x, size.y })
 } 
 
-render_boxes :: proc(boxes: [] Box, scroll: ^Scroll) {
-    offset_y := scroll.pos
+calculate_pos :: proc(box: Box, scroll: ^Scroll) -> (world: Vector, screen: Vector) {
+    world  = box.pos + box.offset + { 0, scroll.pos }
+    screen = box.pos
+    if box.relative && box.parent != nil {
+        world  += box.parent.pos + box.parent.offset 
+        screen += box.parent.pos + box.parent.offset
+    }
+    return 
+}
+
+render_boxes :: proc(boxes: [] Box) {
     for &box in boxes {
-        pos  := box.pos + box.offset + { 0, offset_y }
-        size := box.size
+        scroll := box.scroll if box.scroll != nil else &{}
+        size   := box.size
 
-        screen_pos := box.pos
-
-        if box.relative && box.parent != nil {
-            pos += box.parent.pos + box.parent.offset 
-            screen_pos += box.parent.pos + box.parent.offset 
-        }
+        offset_y := scroll.pos
+        pos, screen_pos := calculate_pos(box, scroll)
         
         render_texture(box.tex, pos, size)
         
@@ -276,9 +364,12 @@ render_boxes :: proc(boxes: [] Box, scroll: ^Scroll) {
 
             if window.events.click == .LEFT &&
                intersects(window.mouse, { link.pos.x, y }, link.size) {
-                scroll.pos, _ = cache.positions[link.target.name]
-                scroll.pos -= 50
-                scroll.pos *= -1
+                target := window.current_tab.box_table[link.target.name]
+                if target != nil {
+                    scroll.pos  = eat(calculate_pos(target^, scroll)).y
+                    // scroll.pos += 50
+                    scroll.pos *= -1
+                }
             }
         }
 
@@ -287,8 +378,9 @@ render_boxes :: proc(boxes: [] Box, scroll: ^Scroll) {
 }
 
 render_frame :: proc() {// {{{
-    sdl.GetMouseState(&window.mouse.x, &window.mouse.y)
+    tab := window.current_tab
 
+    sdl.GetMouseState(&window.mouse.x, &window.mouse.y)
     sdl.SetRenderDrawColor(window.renderer, 255, 200, 200, 255)
     sdl.RenderFillRect(window.renderer, 
         &{ window.sidebar_w, window.toolbar_h, window.size.x, window.size.y })
@@ -299,26 +391,23 @@ render_frame :: proc() {// {{{
         scroll.vel *= 0.8
     }
 
-    if intersects(window.mouse, Vector { window.sidebar_w, window.toolbar_h }, window.size) {
-        apply_scroll(&window.content_scroll)
+    if intersects(window.mouse, window.search_panel.pos + window.search_panel.offset, window.search_panel.size) {
+        apply_scroll(&tab.search_scroll)
+    } else if intersects(window.mouse, Vector { window.sidebar_w, window.toolbar_h }, window.size) {
+        apply_scroll(&tab.scroll)
     }
     if intersects(window.mouse, Vector {0, 0}, Vector { window.sidebar_w, window.size.y }) {
         apply_scroll(&window.sidebar_scroll)
     }
-    // if intersects(window.mouse, Vector {0, 0}, Vector { window.sidebar_w, window.size.y }) {
-    //     apply_scroll(&window.search_scroll)
-    // }
 
     // ============================= CONTENT ============================= 
 
     underline := colorscheme[Color.BLUE]
 
     sdl.SetRenderDrawColor(window.renderer, underline.r, underline.g, underline.b, 255)
-    render_boxes(cache.body[:], &window.content_scroll)
+    render_boxes(tab.children[:])
 
-    render_scrollbar(
-        { window.search_panel.pos.x + window.search_panel.offset.x - CONFIG_SCROLLBAR_WIDTH, window.toolbar_h },
-        &window.content_scroll)
+    render_scrollbar({ window.search_panel.pos.x + window.search_panel.offset.x - CONFIG_SCROLLBAR_WIDTH, window.toolbar_h }, &tab.scroll)
 
     // ============================= SEARCH  ============================= 
 
@@ -331,10 +420,14 @@ render_frame :: proc() {// {{{
         sdl.SetRenderDrawColor(window.renderer, bar.r, bar.g, bar.b, bar.a)
         sdl.RenderFillRect(window.renderer, &{ pos.x, pos.y, panel.size.x, panel.size.y })
 
-        render_boxes(cache.search[:], &window.search_scroll)
+        render_boxes(tab.search[:])
 
         if panel.click != nil && clicked_in(pos, size) {
             panel.click(panel)
+        }
+
+        if window.search_panel.offset.x == -CONFIG_SEARCH_PANEL_OPEN {
+            render_scrollbar({ window.size.x - CONFIG_SCROLLBAR_WIDTH, window.toolbar_h }, &tab.search_scroll)
         }
     }
 
@@ -344,7 +437,7 @@ render_frame :: proc() {// {{{
     sdl.SetRenderDrawColor(window.renderer, bar.r, bar.g, bar.b, bar.a)
     sdl.RenderFillRect(window.renderer, &{ 0, 0, window.sidebar_w, window.size.y })
 
-    render_boxes(cache.sidebar[:], &window.sidebar_scroll)
+    render_boxes(cache.sidebar[:])
 
     render_scrollbar({ window.sidebar_w - CONFIG_SCROLLBAR_WIDTH, window.toolbar_h }, &window.sidebar_scroll)
 
@@ -381,18 +474,24 @@ render_frame :: proc() {// {{{
     sdl.SetRenderDrawColor(window.renderer, bar.r, bar.g, bar.b, bar.a)
     sdl.RenderFillRect(window.renderer, &{ 0, 0, window.sidebar_w, window.toolbar_h })
     
+    // ============================= TABBAR ============================= 
+
+    render_boxes(window.tabbar_tabs[:])
+    
+
+
 }// }}}
 
 // the font and code_block arguments are, basically, mutually exclusive
-place_box :: proc(out: ^[dynamic] Box, text: string, pos: ^Vector, template: Box) {
+place_box :: proc(out: ^[dynamic] Box, text: string, pos: ^Vector, template: Box) -> ^Box {
     assert(out != nil && pos != nil)
     assert(template.font != nil || template.fmt_code)
-    if len(text) == 0 do return
+    if len(text) == 0 do return nil
 
     box: Box = template
     box.text = text
     if template.fmt_code {
-        box.size = cache_code_block_deferred(out, len(out), current_everything, text)
+        box.size = cache_code_block_deferred(out, len(out), window.current_tab.everything, text)
     } else {
         box.tex, box.size = text_to_texture(text, true, template.font)
     }
@@ -402,64 +501,65 @@ place_box :: proc(out: ^[dynamic] Box, text: string, pos: ^Vector, template: Box
 
     for &link in box.links { link.pos += box.pos }
     append(out, box)
+
+    if box.scroll != nil {
+        box.scroll.max = box.pos.y
+    }
+
+    return &out[len(out) - 1]
     
 }
 
 
-cache_body :: proc(everything: docl.Everything) {// {{{
+cache_body :: proc() {// {{{
     when MEASURE_PERFORMANCE {
         __start := tick_now() 
         defer fperf[#location().procedure] += tick_diff(__start, tick_now())
     }    
     
+    everything := window.current_tab.everything
+    tab := window.current_tab
 
-    register_for_scroll :: proc(name: string, pos: Vector) {
-        cache.positions[name] = pos.y
-        window.content_scroll.max = pos.y
-    }
-
-    // context.allocator = alloc.body
-
-    template      : Box = { font = fonts.regular, margin = { 0, 4 } } 
-    template_code : Box = { fmt_code = true,      margin = { 0, 4 } } 
+    template      : Box = { font = fonts.regular, margin = { 0, 4 }, scroll = &tab.scroll } 
+    template_code : Box = { fmt_code = true,      margin = { 0, 4 }, scroll = &tab.scroll } 
     pos : Vector = { window.sidebar_w + 10, window.toolbar_h + 10 }
 
     the_package := everything.initial_package
 
-    place_box(&cache.body, the_package.name, &pos, { font = fonts.large, margin = { 0, 12 } })
+    place_box(&tab.children, the_package.name, &pos, { font = fonts.large, margin = { 0, 12 }, scroll = &tab.scroll })
     if len(the_package.docs) > 0 {
-        place_box(&cache.body, the_package.docs, &pos, template)
+        place_box(&tab.children, the_package.docs, &pos, template)
     }
 
     for _, entity in the_package.entities {
         if entity.kind == .Type_Name { // <--
-            register_for_scroll(entity.name, pos)
-            place_box(&cache.body, format_code_block(entity), &pos, template_code)
-            place_box(&cache.body, entity.docs, &pos, template)
+            box := place_box(&tab.children, format_code_block(entity), &pos, template_code)
+            if box != nil { tab.box_table[entity.name] = box }
+            place_box(&tab.children, entity.docs, &pos, template)
         }
     }
 
     for _, entity in the_package.entities {
         if entity.kind == .Procedure {
-            register_for_scroll(entity.name, pos)
-            place_box(&cache.body, format_code_block(entity), &pos, template_code)
-            place_box(&cache.body, entity.docs, &pos, template)
+            box := place_box(&tab.children, format_code_block(entity), &pos, template_code)
+            if box != nil { tab.box_table[entity.name] = box }
+            place_box(&tab.children, entity.docs, &pos, template)
         }
     }
 
     for _, entity in the_package.entities {
         if entity.kind == .Proc_Group {
-            register_for_scroll(entity.name, pos)
-            place_box(&cache.body, format_code_block(entity), &pos, template_code)
-            place_box(&cache.body, entity.docs, &pos, template)
+            box := place_box(&tab.children, format_code_block(entity), &pos, template_code)
+            if box != nil { tab.box_table[entity.name] = box }
+            place_box(&tab.children, entity.docs, &pos, template)
         }
     }
 
     for _, entity in the_package.entities {
         if entity.kind == .Constant || entity.kind == .Variable {
-            register_for_scroll(entity.name, pos)
-            place_box(&cache.body, format_code_block(entity), &pos, template_code)
-            place_box(&cache.body, entity.docs, &pos, template)
+            box := place_box(&tab.children, format_code_block(entity), &pos, template_code)
+            if box != nil { tab.box_table[entity.name] = box }
+            place_box(&tab.children, entity.docs, &pos, template)
         }
     }
 
@@ -485,7 +585,8 @@ cache_sidebar :: proc() {// {{{
     
     template := Box {
         font = fonts.regular,
-        click = sidebar_click_event_handler           
+        click = sidebar_click_event_handler,
+        scroll = &window.sidebar_scroll,
     }
     pos := Vector { 4, window.toolbar_h }
     last_category: string
@@ -502,7 +603,7 @@ cache_sidebar :: proc() {// {{{
         if category := strings.index(file, "@"); category != -1 {
             if last_category != file[:category] {
                 place_box(&cache.sidebar, file[:category], &pos, 
-                    { font = fonts.large })
+                    { font = fonts.large, scroll = &window.sidebar_scroll })
             }
             last_category = file[:category]
         }

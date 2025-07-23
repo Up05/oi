@@ -13,8 +13,9 @@ CONFIG_LARGE_FONT_SIZE      :: 22
 CONFIG_SCROLLBAR_WIDTH      :: 16
 CONFIG_SEARCH_PANEL_CLOSED  :: 15  // in pixels
 CONFIG_SEARCH_PANEL_OPEN    :: 400 
+CONFIG_TAB_WIDTH            :: 32 
 
-CONFIG_SEARCH_WIDTH :: 80
+CONFIG_EMPTY_TAB_NAME       :: "Empty tab"
 
 // original colorscheme totally stolen from morhetz/gruvbox
 CONFIG_UI_BG1       :: "282828FF"
@@ -157,21 +158,22 @@ main :: proc() {
 /*
 TODO:
 
-    tabs (like mostly just cached stuff)
-      no split, but instead have "view" maybe?
+    maybe make icons for packages?
 
-    resize
+    horizontal scrolling?
+    weird fullscreen bug
     copy codeblock
     open codeblock in editor
     fzf for sidebar
     search methods
 
+    hot packages (sidebar pkg background redness would be controlled by visits/month)
+      maybe an integrator? since, otherwise, I'd need to every visit
+
   search:
-    selection cursors
     maybe all_search_inputs: [dynamic] ^Search
       for mouse input...
     up/down arrows could be used for the selection of items in the list?
-    maybe make it numbered list and then 12312.
 
   1. global indexer
     load every file 
@@ -192,6 +194,9 @@ TODO:
     ...
 
   4. (very easy) user libs
+
+  5. accessibility
+
 
 */
 

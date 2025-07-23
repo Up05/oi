@@ -30,6 +30,11 @@ handle_keypress :: proc(base_event: sdl.Event) {
                 window.active_search = &window.toolbar_search
                 return
             }
+        case .w:
+            if ctrl {
+                close_tab(window.current_tab)
+                return
+            }
         
 
         case:
