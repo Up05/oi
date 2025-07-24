@@ -42,10 +42,6 @@ ptr_sub :: proc(a, b: rawptr) -> int {
     return transmute(int) a - transmute(int) b
 }
 
-tab_index_from_pointer :: proc(tab: ^Tab) -> int {
-    return ptr_sub(rawptr(tab), raw_data(window.tabs)) / size_of(Tab)
-}
-
 make_arena_alloc :: proc() -> mem.Allocator {
     arena := new(virtual.Arena)
     _ = virtual.arena_init_growing(arena)

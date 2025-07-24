@@ -5,6 +5,7 @@ import "core:fmt"
 import "core:strings"
 import "core:slice"
 import "core:mem"
+import "core:math/rand"
 import "core:thread"
 import os "core:os/os2"
 import sdl "vendor:sdl2"
@@ -59,8 +60,7 @@ Scroll :: struct {
 }
 
 Tab :: struct {
-    ID            : int, // TODO for later
-    is_replacable : bool,
+    is_empty      : bool,
     everything    : docl.Everything,
     alloc         : mem.Allocator,
     box_table     : map [string] ^Box,  // entity name to y offset
@@ -127,7 +127,7 @@ window : struct {
 
     tabbar_tabs  : [dynamic] Box,
     tabs         : [dynamic] Tab,
-    current_tab  : ^Tab,
+    current_tab  : int,
 }
 
 
@@ -150,6 +150,7 @@ cache : struct {
 alloc : struct {
     body    : mem.Allocator,
     sidebar : mem.Allocator,
+    sdl     : mem.Allocator,
 }
 
 pools : struct {
@@ -181,8 +182,6 @@ initialize_window :: proc() {// {{{
 
     sdl.GetWindowSize(window.handle, &window.size.x, &window.size.y)
 
-    open_package("cache/core@os.odin-doc")
-
     cache.sidebar = make([dynamic] Box, alloc.sidebar) 
     cache_sidebar()
     cache_toolbar()
@@ -191,11 +190,28 @@ initialize_window :: proc() {// {{{
     window.active_search = &window.toolbar_search
     make_search_panel()
 
+    new_tab(CONFIG_EMPTY_TAB_NAME)
+    // default_module := Module {
+    //     name     = strings.clone("default"),
+    //     userdata = raw_data(strings.clone("cache/core@os.odin-doc")),
+    //     function = open_odin_package,
+    // }
+    // open_sidebar_module(default_module)
+
+
 }// }}}
+
+// I use the getter here because 
+// I changed the way I fetch the current tab ~3 times now
+// I MAY end up with a { tabs: ..., cursor: int } struct
+// and the current way is relatively long (text-wise)
+current_tab :: proc() -> ^Tab {
+    return &window.tabs[window.current_tab]
+}
 
 refresh_tabbar :: proc() {
     x: i32
-    if len(window.tabbar_tabs) > 0 do x = window.tabbar_tabs[0].pos.x
+    if len(window.tabbar_tabs) > 0 do x = window.sidebar_w + 4
     for &tab in window.tabbar_tabs {
         tab.pos.x = x
         x += tab.size.x + tab.margin.x
@@ -203,71 +219,90 @@ refresh_tabbar :: proc() {
 }
 
 new_tab :: proc(name: string) {
+
     tab: Tab
-    tab.alloc = make_arena_alloc()
-    tab.is_replacable = name == CONFIG_EMPTY_TAB_NAME
-    append(&window.tabs, tab)
-    window.current_tab = &window.tabs[len(window.tabs) - 1]
 
-    tab_click_handler :: proc(target: ^Box) {
-        tab := cast(^Tab) target.userdata
-        window.current_tab = tab
-    }
+    if len(window.tabs) <= 0 || !window.tabs[0].is_empty {
 
-    template: Box = {
-        font     = fonts.regular,
-        click    = tab_click_handler,
-        userdata = rawptr(window.current_tab),
-        margin   = { 2, 0 },
-    }
-    
-    x: i32 = 4
-    for tab in window.tabbar_tabs {
-        x += tab.size.x + template.margin.x
-    }
+        tab.alloc = make_arena_alloc()
+        tab.is_empty = name == CONFIG_EMPTY_TAB_NAME
+        append(&window.tabs, tab)
+        window.current_tab = len(window.tabs) - 1
 
-    pos := Vector { window.sidebar_w + x, window.toolbar_h / 2 + 8 }
-    place_box(&window.tabbar_tabs, package_name_from_path(name), &pos, template) 
+        tab_click_handler :: proc(target: ^Box) {
+            tab := cast(^Tab) target.userdata
+            for &bar_tab, i in window.tabs {
+                if &bar_tab == tab {
+                    window.current_tab = i
+                    fmt.println("TEST", i)
+                }
+            }
+            fmt.println("Did not find tab. Failed to set current tab in tab_click_handler") // VERY TODO
+        }
+
+
+        template: Box = {
+            font     = fonts.regular,
+            click    = tab_click_handler,
+            userdata = rawptr(current_tab()),
+            margin   = { 2, 0 },
+        }
+        
+        x: i32 = 4
+        for tab in window.tabbar_tabs {
+            x += tab.size.x + template.margin.x
+        }
+
+        pos := Vector { window.sidebar_w + x, window.toolbar_h / 2 + 8 }
+        place_box(&window.tabbar_tabs, name, &pos, template) 
+
+    } else {
+        window.tabs[0].is_empty = false
+        tab := &window.tabbar_tabs[0]
+        tab.text = name
+        tab.tex, tab.size = text_to_texture(tab.text, true, tab.font)
+        refresh_tabbar()
+
+    }
 }
 
-close_tab :: proc(tab: ^Tab) {
+close_tab :: proc(tab_index: int, caller := #caller_location) {
+    fmt.println(caller)
+    old_tab := &window.tabs[tab_index]
 
-    index := tab_index_from_pointer(window.current_tab)
-    ordered_remove(&window.tabs, index)
-    ordered_remove(&window.tabbar_tabs, index)
+    clear(&old_tab.box_table)
+    clear(&old_tab.cache_queue)
+    destroy_boxes(&old_tab.children)
+    destroy_boxes(&old_tab.search)
 
-    clear(&tab.box_table)
-    clear(&tab.cache_queue)
-    clear(&tab.children)
-    clear(&tab.search)
+    free_all(old_tab.alloc) // <-- !!!
 
-    free_all(tab.alloc) // <-- !!!
+    old_tab.scroll = {}
 
-    tab.scroll = {}
+    ordered_remove(&window.tabs,        tab_index)
+    ordered_remove(&window.tabbar_tabs, tab_index)
 
     if len(window.tabs) > 0 {
-        window.current_tab = &window.tabs[len(window.tabs) - 1]
         refresh_tabbar()
     } else {
-        new_tab("empty tab")
+        new_tab(CONFIG_EMPTY_TAB_NAME)
     }
+
+    window.current_tab = len(window.tabs) - 1
 }
 
 // I would honestly prefer this to be a map of string* <-> function pointer
 // and in sidebar.click
-open_package :: proc(file: string) {
+open_sidebar_module :: proc(module: Module) {
     
-    // later have "empty tab"
-    // if window.current_tab != nil {
-    //     close_tab(window.current_tab)
-    // }
-    
-    new_tab(file)
+    fmt.println(module)
+    new_tab(module.name)
 
-    window.current_tab.box_table    = make(map [string] ^Box, window.current_tab.alloc)
-    window.current_tab.children     = make([dynamic] Box,     window.current_tab.alloc)
-    window.current_tab.search       = make([dynamic] Box,     window.current_tab.alloc)
-    window.current_tab.cache_queue  = make([dynamic] CodeBlockCacheData, 0, 32, window.current_tab.alloc)
+    tab := current_tab()
+    tab.box_table    = make(map [string] ^Box, tab.alloc)
+    tab.children     = make([dynamic] Box,     tab.alloc)
+    tab.search       = make([dynamic] Box,     tab.alloc)
+    tab.cache_queue  = make([dynamic] CodeBlockCacheData, 0, 32, tab.alloc)
 
     // old core:os has processor_core_count
     // but I would rather not use it here
@@ -276,12 +311,7 @@ open_package :: proc(file: string) {
     thread.pool_init(&pools.body, alloc.body, 3) 
     thread.pool_start(&pools.body)
 
-    ok: bool
-    window.current_tab.everything, ok = docl.load(file, window.current_tab.alloc)
-    assert(ok)
-
-    cache_body()
-
+    module.function(module.userdata)
 }
 
 handle_resize :: proc() {
@@ -364,7 +394,7 @@ render_boxes :: proc(boxes: [] Box) {
 
             if window.events.click == .LEFT &&
                intersects(window.mouse, { link.pos.x, y }, link.size) {
-                target := window.current_tab.box_table[link.target.name]
+                target := current_tab().box_table[link.target.name]
                 if target != nil {
                     scroll.pos  = eat(calculate_pos(target^, scroll)).y
                     // scroll.pos += 50
@@ -378,7 +408,7 @@ render_boxes :: proc(boxes: [] Box) {
 }
 
 render_frame :: proc() {// {{{
-    tab := window.current_tab
+    tab := current_tab()
 
     sdl.GetMouseState(&window.mouse.x, &window.mouse.y)
     sdl.SetRenderDrawColor(window.renderer, 255, 200, 200, 255)
@@ -482,6 +512,11 @@ render_frame :: proc() {// {{{
 
 }// }}}
 
+destroy_boxes :: proc(boxes: ^[dynamic] Box) {
+    for &box in boxes { if box.tex != nil do sdl.DestroyTexture(box.tex) }
+    clear(boxes)
+}
+
 // the font and code_block arguments are, basically, mutually exclusive
 place_box :: proc(out: ^[dynamic] Box, text: string, pos: ^Vector, template: Box) -> ^Box {
     assert(out != nil && pos != nil)
@@ -491,7 +526,7 @@ place_box :: proc(out: ^[dynamic] Box, text: string, pos: ^Vector, template: Box
     box: Box = template
     box.text = text
     if template.fmt_code {
-        box.size = cache_code_block_deferred(out, len(out), window.current_tab.everything, text)
+        box.size = cache_code_block_deferred(out, len(out), current_tab().everything, text)
     } else {
         box.tex, box.size = text_to_texture(text, true, template.font)
     }
@@ -511,66 +546,18 @@ place_box :: proc(out: ^[dynamic] Box, text: string, pos: ^Vector, template: Box
 }
 
 
-cache_body :: proc() {// {{{
-    when MEASURE_PERFORMANCE {
-        __start := tick_now() 
-        defer fperf[#location().procedure] += tick_diff(__start, tick_now())
-    }    
-    
-    everything := window.current_tab.everything
-    tab := window.current_tab
-
-    template      : Box = { font = fonts.regular, margin = { 0, 4 }, scroll = &tab.scroll } 
-    template_code : Box = { fmt_code = true,      margin = { 0, 4 }, scroll = &tab.scroll } 
-    pos : Vector = { window.sidebar_w + 10, window.toolbar_h + 10 }
-
-    the_package := everything.initial_package
-
-    place_box(&tab.children, the_package.name, &pos, { font = fonts.large, margin = { 0, 12 }, scroll = &tab.scroll })
-    if len(the_package.docs) > 0 {
-        place_box(&tab.children, the_package.docs, &pos, template)
-    }
-
-    for _, entity in the_package.entities {
-        if entity.kind == .Type_Name { // <--
-            box := place_box(&tab.children, format_code_block(entity), &pos, template_code)
-            if box != nil { tab.box_table[entity.name] = box }
-            place_box(&tab.children, entity.docs, &pos, template)
-        }
-    }
-
-    for _, entity in the_package.entities {
-        if entity.kind == .Procedure {
-            box := place_box(&tab.children, format_code_block(entity), &pos, template_code)
-            if box != nil { tab.box_table[entity.name] = box }
-            place_box(&tab.children, entity.docs, &pos, template)
-        }
-    }
-
-    for _, entity in the_package.entities {
-        if entity.kind == .Proc_Group {
-            box := place_box(&tab.children, format_code_block(entity), &pos, template_code)
-            if box != nil { tab.box_table[entity.name] = box }
-            place_box(&tab.children, entity.docs, &pos, template)
-        }
-    }
-
-    for _, entity in the_package.entities {
-        if entity.kind == .Constant || entity.kind == .Variable {
-            box := place_box(&tab.children, format_code_block(entity), &pos, template_code)
-            if box != nil { tab.box_table[entity.name] = box }
-            place_box(&tab.children, entity.docs, &pos, template)
-        }
-    }
-
-}// }}}
-
 cache_sidebar :: proc() {// {{{
 
     sidebar_click_event_handler :: proc(target: ^Box) {
         if target.userdata == nil do return 
         path := (transmute(^string) target.userdata)^
-        open_package(strings.concatenate({ "cache/", path }, context.temp_allocator))
+        path  = strings.concatenate({ "cache/", path }, context.allocator)
+        module := Module { 
+            name = package_name_from_path(path), 
+            userdata = raw_data(path), 
+            function = open_odin_package 
+        }
+        open_sidebar_module(module)
     }
     
     // ======= SETUP =======

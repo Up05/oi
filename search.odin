@@ -27,7 +27,7 @@ Search :: struct {
 
 make_toolbar_search :: proc() {
     search_result_click_handler :: proc(target: ^Box) {
-        tab := window.current_tab
+        tab := current_tab()
         base := tab.box_table[target.text]
         window.events.cancel_click = true
         if base == nil do return
@@ -42,11 +42,8 @@ make_toolbar_search :: proc() {
     search.offsets = make([] int, 1)
 
     search.onsubmit = proc(search: ^Search) {
-        tab := window.current_tab
-        for button in tab.search {
-            sdl.DestroyTexture(button.tex)
-        }
-        clear(&tab.search)
+        tab := current_tab()
+        destroy_boxes(&tab.search)
 
         query := strings.to_string(search.text)
         result: [dynamic] ^docl.Entity 

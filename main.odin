@@ -112,7 +112,7 @@ main :: proc() {
     assert( sdl.Init(sdl.INIT_VIDEO) >= 0, "Failed to initialize SDL!" )
     assert( sdl.CreateWindowAndRenderer(1280, 720, { sdl.WindowFlag.RESIZABLE }, &window.handle, &window.renderer) >= 0, "Failed to start program!" )
 
-    initialize_window()
+    initialize_window() 
 
     next_frame_target = sdl.GetTicks() + (1000 / CONFIG_MAX_FPS)
     for !should_exit {
