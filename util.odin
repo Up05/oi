@@ -23,6 +23,23 @@ fperf: map [string] time.Duration
     }    
 */ 
 
+// I believe that the most useful feature of Regex is easily the '.*'
+// as of right now, odin-lang does not have the "full" regex compiler
+// and so this is an implementation of `matches()` with ONLY the '.*'
+dotstar :: proc(plaintext, dotstar_regex: string) -> bool {
+    A := plaintext
+    B := dotstar_regex
+
+    for piece in strings.split_iterator(&B, ".*") {
+        cursor := strings.index(A, piece)
+        if cursor == -1 do return false
+
+        A = A[cursor + len(piece):]
+    }
+    
+    return true
+}
+
 package_name_from_path :: proc(file: string) -> string {
     file := file
     

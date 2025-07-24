@@ -7,15 +7,16 @@ import sdl "vendor:sdl2"
 // This is a programmer tool, might as well just make it suckless!
 // ========== CONFIGURATION ==========
 
-CONFIG_MAX_FPS              :: 60   
-CONFIG_FONT_SIZE            :: 14
-CONFIG_LARGE_FONT_SIZE      :: 22
-CONFIG_SCROLLBAR_WIDTH      :: 16
-CONFIG_SEARCH_PANEL_CLOSED  :: 15  // in pixels
-CONFIG_SEARCH_PANEL_OPEN    :: 400 
-CONFIG_TAB_WIDTH            :: 32 
-
-CONFIG_EMPTY_TAB_NAME       :: "Empty tab"
+CONFIG_MAX_FPS               :: 60   
+CONFIG_FONT_SIZE             :: 14
+CONFIG_LARGE_FONT_SIZE       :: 22
+CONFIG_SCROLLBAR_WIDTH       :: 16
+CONFIG_SEARCH_PANEL_CLOSED   :: 15  // in pixels
+CONFIG_SEARCH_PANEL_OPEN     :: 400 
+CONFIG_TAB_WIDTH             :: 32 
+CONFIG_SEARCH_METHOD_WIDTH   :: 96
+CONFIG_INITIAL_SEARCH_METHOD :: SearchMethod.CONTAINS
+CONFIG_EMPTY_TAB_NAME        :: "Empty tab"
 
 // original colorscheme totally stolen from morhetz/gruvbox
 CONFIG_UI_BG1       :: "282828FF"
@@ -95,8 +96,6 @@ main :: proc() {
 		}
 	}
 
-
-
     defer { // performance bodge
         longest: int
         for func, _ in fperf {
@@ -114,6 +113,7 @@ main :: proc() {
 
     initialize_window() 
 
+
     next_frame_target = sdl.GetTicks() + (1000 / CONFIG_MAX_FPS)
     for !should_exit {
 
@@ -121,7 +121,6 @@ main :: proc() {
         for sdl.PollEvent(&event) {
             #partial switch event.type {
             case .QUIT:         should_exit = true
-            case .KEYDOWN:      handle_keypress(event)
             case .WINDOWEVENT:  if event.window.event == .RESIZED  { handle_resize() }
             case .MOUSEWHEEL:   window.events.scroll = { event.wheel.x, event.wheel.y }
             case .MOUSEBUTTONDOWN: 
@@ -129,6 +128,8 @@ main :: proc() {
                 window.pressed      = auto_cast event.button.button
             case .MOUSEBUTTONUP:
                 window.pressed = .NONE
+            case .KEYDOWN, .TEXTINPUT: 
+                handle_keypress(event)
             case: 
             }
         }
@@ -157,6 +158,10 @@ main :: proc() {
 
 /*
 TODO:
+
+    search:
+        shift does work
+        ctrl shouldn't work
 
     maybe make icons for packages?
 

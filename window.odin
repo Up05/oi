@@ -403,12 +403,25 @@ render_boxes :: proc(boxes: [] Box) {
             }
         }
 
-
     }
 }
 
+// yes. This is insane. And backwards
+// I will clean this up on the next pass
+// TODO
+render_single_box :: proc(box: ^Box) {
+    box_list  := transmute([^] Box) box
+    box_slice := box_list[:1]
+    render_boxes(box_slice)
+}
+
+prev_frame_active_search: ^Search
 render_frame :: proc() {// {{{
     tab := current_tab()
+
+    defer prev_frame_active_search = window.active_search 
+    if window.active_search != nil && prev_frame_active_search == nil { sdl.StartTextInput() }
+    if window.active_search == nil && prev_frame_active_search != nil { sdl.StopTextInput() }
 
     sdl.GetMouseState(&window.mouse.x, &window.mouse.y)
     sdl.SetRenderDrawColor(window.renderer, 255, 200, 200, 255)
@@ -471,6 +484,10 @@ render_frame :: proc() {// {{{
 
     render_scrollbar({ window.sidebar_w - CONFIG_SCROLLBAR_WIDTH, window.toolbar_h }, &window.sidebar_scroll)
 
+    // ============================= TABBAR ============================= 
+
+    render_boxes(window.tabbar_tabs[:])
+
     // ============================= TOOLBAR ============================= 
 
     bar  = colorscheme[.BG2]
@@ -496,7 +513,7 @@ render_frame :: proc() {// {{{
            element.click != nil { element.click(&element) }
     }
     
-    draw_search(window.toolbar_search, window.active_search == &window.toolbar_search)
+    draw_search(&window.toolbar_search, window.active_search == &window.toolbar_search)
 
     // ========================== INTERSECTION? ========================== 
     
@@ -504,9 +521,6 @@ render_frame :: proc() {// {{{
     sdl.SetRenderDrawColor(window.renderer, bar.r, bar.g, bar.b, bar.a)
     sdl.RenderFillRect(window.renderer, &{ 0, 0, window.sidebar_w, window.toolbar_h })
     
-    // ============================= TABBAR ============================= 
-
-    render_boxes(window.tabbar_tabs[:])
     
 
 

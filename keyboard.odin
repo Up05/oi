@@ -23,6 +23,9 @@ handle_keypress :: proc(base_event: sdl.Event) {
     // a key event from going the active search
     #partial switch event.sym {
         case .ESCAPE:
+            if window.active_search != nil {
+                window.active_search.select = window.active_search.cursor
+            }
             window.active_search = nil
             return
         case .s:

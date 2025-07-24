@@ -4,18 +4,47 @@ import docl "doc-loader"
 
 import "core:fmt"
 import "core:slice"
+import "core:reflect"
 import "core:strings"
+import "core:text/match"
 import "core:unicode"
 import "core:unicode/utf8"
 
 import sdl "vendor:sdl2"
 import "vendor:sdl2/ttf"
 
+SearchMethod :: enum {
+    CONTAINS,               // default
+    STRICT, PREFIX, SUFFIX,
+    FUZZY1, FUZZY2, FUZZY4, // 1, 2 and 4 are the string "distances" in levelshtein algorithm
+    REGEX, DOTSTAR,         // dotstar is strings.contains + regex's '.*' 
+    // TODO SYNONYMS,       // synonyms WOULD probably use some synonyms graph for stuff
+}
+
+search_method_procs: [SearchMethod] proc(a, b: string) -> bool = {
+    .CONTAINS = proc(a, b: string) -> bool { return strings.contains(a, b) },
+    .STRICT   = proc(a, b: string) -> bool { return a == b },
+    .PREFIX   = proc(a, b: string) -> bool { return strings.starts_with(a, b) },
+    .SUFFIX   = proc(a, b: string) -> bool { return strings.ends_with(a, b) },
+    .FUZZY1   = proc(a, b: string) -> bool { return strings.levenshtein_distance(a, b, context.temp_allocator) <= 1 },
+    .FUZZY2   = proc(a, b: string) -> bool { return strings.levenshtein_distance(a, b, context.temp_allocator) <= 2 },
+    .FUZZY4   = proc(a, b: string) -> bool { return strings.levenshtein_distance(a, b, context.temp_allocator) <= 4 },
+    .REGEX    = proc(a, b: string) -> bool {
+        a := a
+        captures: [32] match.Match        
+        res, ok := match.gfind(&a, b, &captures)
+        return len(res) > 0
+    },
+    .DOTSTAR = dotstar,
+    // .SYNONYMS = proc(a, b: string) -> bool { panic("NOT YET IMPLEMENTED") },
+}
+
+
 
 Search :: struct {
     pos      : Vector,
     size     : Vector,
-    onsubmit : proc(search: ^Search),
+    submit   : proc(search: ^Search),
 
     text     : strings.Builder,
     cursor   : int,              // cursor / selection start                 [bytes]
@@ -23,6 +52,10 @@ Search :: struct {
     texture  : Texture,
     offsets  : [] int,           // rune x offsets in pixels, by byte (NOT RUNE)
 
+    method          : SearchMethod,
+    method_box      : Box,
+    method_dropdown : [dynamic] Box,
+    method_box_open : bool,
 }
 
 make_toolbar_search :: proc() {
@@ -34,15 +67,15 @@ make_toolbar_search :: proc() {
         tab.scroll.pos = -(base.pos.y - window.toolbar_h)
     }
 
-
     search: Search
 
     search.pos =  { window.sidebar_w + 4, 4 }
     search.texture, search.size = text_to_texture(" [s]earch for items...", true)
     search.offsets = make([] int, 1)
 
-    search.onsubmit = proc(search: ^Search) {
+    search.submit = proc(search: ^Search) {// {{{
         tab := current_tab()
+        if tab.is_empty do return
         destroy_boxes(&tab.search)
 
         query := strings.to_string(search.text)
@@ -51,7 +84,7 @@ make_toolbar_search :: proc() {
         
         start_item_count := len(tab.everything.initial_package.entities)
         for name, entity in tab.everything.initial_package.entities {
-            if strings.starts_with(name, query) {
+            if search_method_procs[search.method](name, query) {
                 append(&result, entity)
             }
         }
@@ -92,7 +125,48 @@ make_toolbar_search :: proc() {
 
         assert(window.search_panel.click != nil)
         window.search_panel.click(&window.search_panel)
+    }// }}}
+
+    search.method = CONFIG_INITIAL_SEARCH_METHOD
+
+    search.method_box = {
+        font  = fonts.regular,
+        pos   = { window.size.x - CONFIG_SEARCH_METHOD_WIDTH - 4, 4 },
+        text  = fmt.aprint(search.method),
+        click = proc(target: ^Box) { 
+            search := &window.toolbar_search
+            search.method_box_open = !search.method_box_open 
+        },
     }
+
+    search.method_box.tex,search.method_box.size = 
+        text_to_texture(search.method_box.text, false, fonts.regular)
+
+    pos := search.method_box.pos + { 0, search.method_box.size.y + 2 }
+    for method in SearchMethod {
+        template := Box {
+            font   = fonts.regular,
+            parent = &search.method_box,
+            click = proc(target: ^Box) {
+                search := &window.toolbar_search
+                search.method_box_open = false
+                ok: bool
+                search.method, ok = reflect.enum_from_name(SearchMethod, target.text)   
+                assert(ok)
+
+                search_sel := &window.toolbar_search.method_box
+                search_sel.text = target.text
+                sdl.DestroyTexture(search_sel.tex)
+                search_sel.tex, search_sel.size = text_to_texture(target.text, true, search_sel.font)
+                search_sel.padding = (search_sel.size.x - search_sel.size.x) / 2
+                fmt.println(search_sel.text)
+            }
+        }
+        
+        option := place_box(&search.method_dropdown, fmt.aprint(method), &pos, template)
+        option.padding.x = (search.method_box.size.x - option.size.x) / 2
+    }
+
 
     defer window.toolbar_search = search
 }
@@ -118,20 +192,46 @@ render_search :: proc(search: ^Search) {
         }
     }
 
+    // freed at start of proc
     search.texture, search.size = text_to_texture(strings.to_string(search.text), false)
 }
 
 // may want to refactor this into some more generic text input
 // if I will ever need a text input box again in this project...
-handle_event_search :: proc(search: ^Search, base_event: sdl.Event) {
+handle_event_search :: proc(search: ^Search, base_event: sdl.Event) {// {{{
     using search
 
     // if base_event.type == .MOUSE_OR_WHATEVER {
     //     return
     // }
 
+
+    // ============================== ACTUAL TYPING ===============================
+
+    if base_event.type == .TEXTINPUT {
+        new_text := base_event.text.text
+        buffer   := string(transmute(cstring) &new_text)
+
+        if select != cursor {
+            remove_range(&text.buf, min(select, cursor), max(select, cursor))
+            cursor = min(cursor, select)
+            select = cursor
+        }
+
+        inject_at_elem_string(&search.text.buf, search.cursor, buffer)
+        search.cursor += len(buffer)
+        search.select += len(buffer)
+        render_search(search)
+
+        return 
+        // pressing e.g.: 'a' fires 2 events
+        // this return stops only the .TEXTINPUT
+        // but .KEYDOWN with 'a' still passes: 
+    }
+
+
     event: sdl.Keysym = base_event.key.keysym
-    is_lowercase := event.mod & { .RSHIFT, .LSHIFT, .CAPS } == { }
+    // is_lowercase := event.mod & { .RSHIFT, .LSHIFT, .CAPS } == { }
     ctrl  := .LCTRL  in event.mod
     shift := .LSHIFT in event.mod
     
@@ -143,7 +243,7 @@ handle_event_search :: proc(search: ^Search, base_event: sdl.Event) {
     // ported from another one of my tools
     #partial switch event.sym {
     case .RETURN:
-        search.onsubmit(search)
+        search.submit(search)
         return
 
     case .BACKSPACE, .KP_BACKSPACE:
@@ -253,12 +353,10 @@ handle_event_search :: proc(search: ^Search, base_event: sdl.Event) {
 
         select = 0
         cursor = len(text.buf)
+        if shift do select = cursor
 
         return
         
-    // case .ESCAPE: (ESC unfocusses the search box)
-    //     select = cursor
-
     case .C:
         if !ctrl do break
 
@@ -292,31 +390,9 @@ handle_event_search :: proc(search: ^Search, base_event: sdl.Event) {
     case: 
     }
 
-    // ============================== ACTUAL TYPING ===============================
+}// }}}
 
-    // I have zero clue how someone would actually implement this at all whatsoever...
-    if cast(bool) ttf.GlyphIsProvided32(fonts.regular, transmute(rune) event.sym) {
-        r := transmute(rune) event.sym
-        if !is_lowercase do r = unicode.to_upper(r)
-
-        if select != cursor {
-            remove_range(&text.buf, min(select, cursor), max(select, cursor))
-            cursor = min(cursor, select)
-            select = cursor
-        }
-
-        buf, n := utf8.encode_rune(r)
-        inject_at_elem_string(&search.text.buf, search.cursor, string(buf[:n]))
-        search.cursor += n
-        search.select += n
-        render_search(search)
-    }
-    return
-}
-
-
-
-draw_search :: proc(search: Search, is_active: bool) {
+draw_search :: proc(search: ^Search, is_active: bool) {
     FG := colorscheme[.FG2]
     BG := colorscheme[.BLUE]
 
@@ -338,6 +414,12 @@ draw_search :: proc(search: Search, is_active: bool) {
         sdl.SetRenderDrawColor(window.renderer, FG.r, FG.g, FG.b, FG.a)
         sdl.RenderDrawLine(window.renderer, x, i32(search.pos.y), x, i32(search.pos.y + search.size.y))
     }
+
+    render_single_box(&search.method_box)
+    if search.method_box_open {
+        render_boxes(search.method_dropdown[:])
+    }
+
 }
 
 // I made this more generic, cause idk where I'm gonna put it...
