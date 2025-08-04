@@ -1,25 +1,24 @@
 package main
 
 import docl "doc-loader"
+import "core:strings"
+import "core:text/match"
+
 Entity     :: docl.Entity
 Everything :: docl.Everything
 
 Vector      :: [2] i32
 MouseButton :: enum { NONE, LEFT, MIDDLE, RIGHT }
 
-// This should honestly be split up into the search and the generic text input
-// TextInput :: struct {
-//     submit    : proc(search: ^Search),
-//     buffer    : strings.Builder,
-//     cursor    : int,              // cursor / selection start                 [bytes]
-//     select    : int,              // selection end (cursor is the null state) [bytes]
-//     offsets   : [] int,           // rune x offsets in pixels, by byte (NOT RUNE)
-// 
-//     method          : SearchMethod,
-//     method_box      : Box,
-//     method_dropdown : [dynamic] Box,
-//     method_box_open : bool,
-// }
+SearchMethod :: enum {
+    CONTAINS,               // default
+    STRICT, PREFIX, SUFFIX,
+    // TODO later replace with substring fuzzy matching, like: 
+    // https://en.wikipedia.org/wiki/Damerau%E2%80%93Levenshtein_distance#Optimal_string_alignment_distance
+    FUZZY1, FUZZY2, FUZZY4, // 1, 2 and 4 are the string "distances" in levelshtein algorithm
+    REGEX, DOTSTAR,         // dotstar is strings.contains + regex's '.*' 
+    // TODO SYNONYMS,       // synonyms WOULD probably use some synonyms graph for stuff
+}
 
 Palette :: enum {
     TRANSPARENT,   BAD, DBG,
@@ -63,6 +62,24 @@ BoxType :: enum {
     TEXT_INPUT,  // e.g.: searchbars
     CONTAINER,   // used to store other boxes
     LIST,        // lists have recursive indentation + folding
+}
+
+search_method_procs: [SearchMethod] proc(a, b: string) -> bool = {
+    .CONTAINS = proc(a, b: string) -> bool { return strings.contains(a, b) },
+    .STRICT   = proc(a, b: string) -> bool { return a == b },
+    .PREFIX   = proc(a, b: string) -> bool { return strings.starts_with(a, b) },
+    .SUFFIX   = proc(a, b: string) -> bool { return strings.ends_with(a, b) },
+    .FUZZY1   = proc(a, b: string) -> bool { return string_dist(a, b, context.temp_allocator) <= 1 },
+    .FUZZY2   = proc(a, b: string) -> bool { return string_dist(a, b, context.temp_allocator) <= 2 },
+    .FUZZY4   = proc(a, b: string) -> bool { return string_dist(a, b, context.temp_allocator) <= 4 },
+    .REGEX    = proc(a, b: string) -> bool {
+        a := a
+        captures: [32] match.Match        
+        res, ok := match.gfind(&a, b, &captures)
+        return len(res) > 0
+    },
+    .DOTSTAR = dotstar,
+    // .SYNONYMS = proc(a, b: string) -> bool { panic("NOT YET IMPLEMENTED") },
 }
 
 Box :: struct {
@@ -219,13 +236,6 @@ progress_metrics : struct {
 
 
 
-template_default_popup :: proc() -> Box {
-    return {
-        parent = &window.root,
-        min_size = { 1, 1 },
-        hidden = true,
-    }
-}
 
 
 

@@ -1,9 +1,10 @@
 /*
 A wrapper around the core:odin/doc-format
 
-The only option for you:
-everything := parse(filename, allocator)    
-        
+The only options for you:
+1. everything := parse(filename, allocator)    
+2. entity_table := fetch_all_entity_names(path, &progress_info)
+
 (I recommend passing in a custom allocator / context.temp_allocator
 because cleaning up the produced mess would be annoying)
 
@@ -50,8 +51,7 @@ Type :: struct {// {{{
     entities : [] ^Entity,
 
     polymorphic_params : ^Type,
-    // decorative property
-    where_clauses      : [] string,
+    where_clauses      : [] string, // decorative property
     tags               : [] string,
 }// }}}
 
@@ -68,14 +68,14 @@ Position :: struct {
     offset : int,
 }
 
-// All sorts of declarations.
+// Entity = declaration ((here) in global scope).
 // Everything in global scope that has the " :: "
 Entity :: struct {
     kind    : doc.Entity_Kind,
     flags   : doc.Entity_Flags,
     pos     : Position,
     name    : string,
-    _types   : [] ^Type, // just don't fucking use this shit... look up the package by name in file before . or whatever and then just by var name...
+    _types   : [] ^Type, // not recommended to use
     body    : string,
     comment : string,
     docs    : string,
@@ -103,20 +103,14 @@ Package :: struct {
 }
 
 Everything :: struct {
-    // nil by the time parse() is finished (unless FREE_RAW_DATA == false)
-    _header  : Header, 
+    _header  : Header,                  // nil by the time parse() is finished (unless FREE_RAW_DATA == false) 
+    
+    files    : map [string] ^File,      // takes in the full path
+    packages : map [string] ^Package,   // takes in the full path
+    entities : [] ^Entity,              // [Entity_Index] ^Entity, package.entities stores by name
+    types    : [] ^Type,                // [Type_Index] ^Type (empty array, unless LOAD_TYPES == true)
 
-    // takes in the full path
-    files    : map [string] ^File,
-    // takes in the full path
-    packages : map [string] ^Package,
-    // [Entity_Index] ^Entity, entities stored by name are in package.entities
-    entities : [] ^Entity,
-    // [Type_Index] ^Type (empty array, unless LOAD_TYPES == true)
-    types    : [] ^Type,
-
-    // yes, all imported packages are also stored in all files :)  (as a compiler workaround)
-    initial_package : ^Package,
+    initial_package : ^Package,         // all *imported* packages are also there (necessary workaround)
 }
 
 @private

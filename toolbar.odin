@@ -36,18 +36,6 @@ new_tab :: proc(name: string) {
         window.current_tab = len(window.tabs)
         tab_index = len(window.tabs)
 
-        tab_click_handler :: proc(target: ^Box) {
-            tab := cast(^Tab) target.userdata
-            for &bar_tab, i in window.tabs {
-                if &bar_tab == tab {
-                    switch_tabs(i)
-                    return
-                }
-            }
-            fmt.println("Did not find tab. Failed to set current tab in tab_click_handler") // VERY TODO
-        }
-
-
         template: Box = {
             type      = .BASIC,
             click     = tab_click_handler,

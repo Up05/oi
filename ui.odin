@@ -7,14 +7,70 @@ import "core:strings"
 import "core:unicode/utf8"
 rune_size :: utf8.rune_size
 
-LIST_OVERLAY : Box : { type = .LIST, folded = true, click = box_toggle_fold_handler }
+// ==================================================================================
+// ==============================   BOX UTILITY PROCS   =============================
+// ==================================================================================
 
+box_list :: proc(allocator: Allocator) -> [dynamic] ^Box {// {{{
+    return make([dynamic] ^Box, allocator = allocator)
+}// }}}
 
-// =======================================================================================
-// ================================ TEXT BOX REGISTRATION ================================
-// =======================================================================================
+is_child :: proc(box, parent: ^Box) -> bool {// {{{
+    if box == parent do return true
+    if box.parent == nil do return false
+    return is_child(box.parent, parent)
+}// }}}
 
-init_box :: proc(box: ^Box, parent: ^Box) {
+get_child_box :: proc(parent: ^Box, text: string) -> ^Box {// {{{
+    for child in parent.children {
+        if child.text == text do return child
+    }
+    return nil
+}// }}}
+
+get_parent_of_type :: proc(box: ^Box, type: BoxType) -> ^Box {// {{{
+    if box == nil do return nil
+    if box.type == type do return box
+    return get_parent_of_type(box.parent, type)
+}// }}}
+
+get_first_child_of_type :: proc(box: ^Box, type: BoxType) -> ^Box {// {{{
+    for child in box.children {
+        if box.type == type do return child
+    }
+    return nil
+}   // }}}
+
+scroll_to :: proc(parent: ^Box, box: ^Box) {// {{{
+    parent.scroll.pos = box.cached_pos - { 0, parent.cached_pos.y }
+}// }}}
+
+print_box_hierarchy :: proc(tree: ^Box, level := 0) {// {{{
+    space := "                                                                                                "
+    fmt.printfln("%s[%q]", space[:level*4], tree.text)
+    for child, i in tree.children {
+        print_box_hierarchy(child, level + 1)
+        if i > 24 {
+            fmt.println(space[:level*4+4], "...", sep = "")
+            return
+        }
+
+    }
+}// }}}
+
+template_default_popup :: proc() -> Box {// {{{
+    return {
+        parent = &window.root,
+        min_size = { 1, 1 },
+        hidden = true,
+    }
+}// }}}
+
+// ==================================================================================
+// ==============================   BOX REGISTRATION   ==============================
+// ==================================================================================
+
+init_box :: proc(box: ^Box, parent: ^Box) {// {{{
     box.parent = parent
 
     if box.type == .UNKNOWN {
@@ -44,13 +100,13 @@ init_box :: proc(box: ^Box, parent: ^Box) {
     if box.type == .TEXT_INPUT {
         box.offsets = make([] int, 1)
     }
-}
+}// }}}
 
 // Automatically initializes a box made out of templates
 // templates are box structs that override only non-zero properties
 // of previous structs. See: util.merge()
 // And appends the box to parent boxes children.
-append_box :: proc(parent: ^Box, templates: ..Box) -> ^Box {
+append_box :: proc(parent: ^Box, templates: ..Box) -> ^Box {// {{{
     new_box := new(Box, parent.allocator)
     for a_box in templates { new_box^ = merge(new_box^, a_box) }
     append(&parent.children, new_box)
@@ -65,7 +121,7 @@ append_box :: proc(parent: ^Box, templates: ..Box) -> ^Box {
     
     debug.box_count += 1
     return box
-}
+}// }}}
 
 pop_queued_box :: proc(queue: ^[dynamic] ^Box) -> bool {// {{{
     if queue == nil do return false
@@ -96,7 +152,7 @@ pop_queued_box :: proc(queue: ^[dynamic] ^Box) -> bool {// {{{
     return true
 }// }}}
 
-pop_box_from_any_queue :: proc() {
+pop_box_from_any_queue :: proc() {// {{{
     tab := current_tab()
 
     a := len(tab.cache_queue) if tab != nil else 0
@@ -108,7 +164,7 @@ pop_box_from_any_queue :: proc() {
 
     pop_queued_box(&window.box_queue)
 
-}
+}// }}}
 
 clear_box :: proc(box: ^Box, the_chosen := true) {// {{{
     for child in box.children {
@@ -135,42 +191,6 @@ clear_box :: proc(box: ^Box, the_chosen := true) {// {{{
 
     window.should_relayout = true
 }// }}}
-
-update_text_input :: proc(box: ^Box) {// {{{
-    if box.tex!= nil { 
-        destroy_texture(box.tex)
-    }
-    delete_slice(box.offsets)
-    box.offsets = make([] int, len(box.input.buffer.buf) + 1  +4)
-
-    x := 0
-    for r, i in string(box.input.buffer.buf[:]) {
-        width := measure_rune_advance(r, box.font)
-
-        x += width
-
-        rune_size := rune_size(r)
-        for j in 0..<rune_size {
-            box.offsets[i+1 + j] = x
-        }
-    }
-
-    // freed at start of proc
-    box.tex, box.tex_size = render_text(string(box.input.buffer.buf[:]), box.font, box.foreground)
-    // should be fine not to set box.min_size here... 
-}// }}}
-
-get_parent_of_type :: proc(box: ^Box, type: BoxType) -> ^Box {// {{{
-    if box == nil do return nil
-    if box.type == type do return box
-    return get_parent_of_type(box.parent, type)
-}// }}}
-get_first_child_of_type :: proc(box: ^Box, type: BoxType) -> ^Box {// {{{
-    for child in box.children {
-        if box.type == type do return child
-    }
-    return nil
-}   // }}}
 
 setup_base_ui :: proc() {// {{{
     using window.boxes
@@ -258,7 +278,6 @@ setup_base_ui :: proc() {// {{{
     setup_sidebar(sidebar)
 }// }}}
 
-
 make_context_menu :: proc(target: ^Box, items: [] Box) {// {{{
     context_menu: Box = {
         parent        = &window.root,
@@ -315,24 +334,50 @@ make_context_menu :: proc(target: ^Box, items: [] Box) {// {{{
     window.should_relayout = true
 }// }}}
 
-scroll_to :: proc(parent: ^Box, box: ^Box) {
-    parent.scroll.pos = box.cached_pos - { 0, parent.cached_pos.y }
-}
+update_text_input :: proc(search: ^Box) {// {{{
+    if len(search.buffer.buf) == 0 {
+        if search.tex != nil { destroy_texture(search.tex) }
+        search.tex, search.tex_size = render_text(search.text, search.font, search.ghost_color)
+        search.old_size = search.tex_size
+        return
+    }
 
-// =======================================================================================
-// ================================    TEXT BOX LAYOUT    ================================
-// =======================================================================================
+    if search.tex != nil { 
+        destroy_texture(search.tex)
+    }
+    delete_slice(search.offsets)
+    search.offsets = make([] int, len(search.buffer.buf) + 1  +4)
 
-calculate_size :: proc(box: ^Box, base_pos: Vector) -> Vector {
-    // size := max_abs_vector(box.min_size, box.tex_size)
+    x := 0
+    for r, i in strings.to_string(search.buffer) {
+        x += measure_rune_advance(r, search.font)
+
+        rune_size := utf8.rune_size(r)
+        for j in 0..<rune_size {
+            search.offsets[i+1 + j] = x
+        }
+    }
+
+    search.tex, search.tex_size = render_text(strings.to_string(search.buffer), search.font, search.foreground)
+    search.old_size = search.tex_size
+
+    window.text_cursor_visible = true
+    window.text_cursor_change_state_in = CONFIG_CURSOR_REFRESH_RATE
+}// }}}
+
+// ==================================================================================
+// ================================    BOX LAYOUT    ================================
+// ==================================================================================
+
+calculate_size :: proc(box: ^Box, base_pos: Vector) -> Vector {// {{{
     size := box.min_size
     parent_size := (window.size - base_pos) if box.parent == &window.root else box.parent.cached_size
     if size.x < 1 do size.x = max(parent_size.x - math.abs(size.x), 0)
     if size.y < 1 do size.y = max(parent_size.y - math.abs(size.y), 0)
     return size + box.padding
-}
+}// }}}
 
-layout_box :: proc(box: ^Box, the_pos: ^Vector) {
+layout_box :: proc(box: ^Box, the_pos: ^Vector) {// {{{
     if box.hidden do return
 
     box.cached_pos += box.position
@@ -370,18 +415,18 @@ layout_box :: proc(box: ^Box, the_pos: ^Vector) {
 
     box.scroll.max = the_pos^
     if box.type == .CONTAINER { box.scroll.max.y -= box.cached_pos.y }
-}
+}// }}}
 
-layout_reset :: proc(box: ^Box) {
+layout_reset :: proc(box: ^Box) {// {{{
     box.cached_pos = {}
     box.cached_size = {}
     box.cached_indent = {}
     for child in box.children {
         layout_reset(child)
     }
-}
+}// }}}
 
-update_layout :: proc() {
+update_layout :: proc() {// {{{
 
     if window.should_relayout {
         window.should_relayout = false
@@ -398,12 +443,11 @@ update_layout :: proc() {
     }
 
     fmt.println("=== layout updated ===")
-    // print_box_hierarchy(&window.root)
-}
+}// }}}
 
-// =======================================================================================
-// ================================   TEXT BOX DRAWING    ================================
-// =======================================================================================
+// ==================================================================================
+// ================================   BOX DRAWING    ================================
+// ==================================================================================
 
 draw_text_select :: proc(box: ^Box) {// {{{
     selecting_range := box.cursor != box.select
@@ -418,7 +462,7 @@ draw_text_select :: proc(box: ^Box) {// {{{
     }
 }// }}}
 
-draw_text_cursor :: proc(box: ^Box) {
+draw_text_cursor :: proc(box: ^Box) {// {{{
     window.text_cursor_change_state_in -= 1
     if window.text_cursor_change_state_in < 0 {
         window.text_cursor_change_state_in = CONFIG_CURSOR_REFRESH_RATE
@@ -434,7 +478,7 @@ draw_text_cursor :: proc(box: ^Box) {
         x := i32(int(box.cached_pos.x) + box.offsets[min(box.cursor, box.select)]) + box.padding.x/2
         draw_line_rgba({ x, box.cached_pos.y }, { x, box.cached_pos.y + box.tex_size.y }, COLORS[.FG1])
     }
-}
+}// }}}
 
 draw_border_raw :: proc(pos, size: Vector, color: Palette, inset := false) {// {{{
     luma1 : f32 = 1.33 if !inset else 0.75 
@@ -555,7 +599,7 @@ draw_box :: proc(box: ^Box, scroll_amount: Vector) {// {{{
 
 }// }}}
 
-draw_window :: proc() {
+draw_window :: proc() {// {{{
     draw_rectangle({}, window.size, .BAD)
 
     for box in window.root.children {
@@ -564,7 +608,7 @@ draw_window :: proc() {
 
     draw_debug_info()
 
-}
+}// }}}
 
 draw_debug_info :: proc() { // {{{
     box_info :: proc(name: string, b: ^Box) -> string {// {{{
@@ -617,15 +661,3 @@ SCROLL: %v/%v`, name,
 
 }// }}}
 
-print_box_hierarchy :: proc(tree: ^Box, level := 0) {
-    space := "                                                                                                "
-    fmt.printfln("%s[%q]", space[:level*4], tree.text)
-    for child, i in tree.children {
-        print_box_hierarchy(child, level + 1)
-        if i > 24 {
-            fmt.println(space[:level*4+4], "...", sep = "")
-            return
-        }
-
-    }
-}

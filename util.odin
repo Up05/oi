@@ -21,6 +21,8 @@ Duration   :: time.Duration
 tick_now   :: time.tick_now
 tick_diff  :: time.tick_diff
 
+string_dist :: strings.levenshtein_distance
+
 fperf: map [string] time.Duration
 
 trap :: runtime.debug_trap
@@ -124,11 +126,6 @@ rgba :: proc(hex: u32) -> Color {
     return { r, g, b, a }
 }
 
-set_dynamic_array_length :: proc(array: ^[dynamic] $T, length: int) {
-    (transmute(^runtime.Raw_Dynamic_Array) array).len = length
-}
-
-
 // merge two structs (overrides first's non zero members with second's)
 // +-------------------------------------------------------------------
 // | A := Box { font = .REGULAR, background = .BG4 }
@@ -156,18 +153,18 @@ merge :: proc(a: $T, b: T) -> T {
     return a
 }
 
+set_dynamic_array_length :: proc(array: ^[dynamic] $T, length: int) {
+    (transmute(^runtime.Raw_Dynamic_Array) array).len = length
+}
+
 last_rune_size :: proc(bytes: [] byte) -> int {
     _, n := utf8.decode_last_rune_in_bytes(bytes)
     return n
 }
 
-cstr :: proc(text: string) -> cstring { 
-    return strings.clone_to_cstring(text, context.temp_allocator) 
-}
-
-up_to :: proc(text: string, limit: int) -> string {
-    return text[:min(len(text), limit)]
-}
+up_to :: proc(text: string, limit: int) -> string { return text[:min(len(text), limit)] }
+cstr :: proc(text: string) -> cstring { return strings.clone_to_cstring(text, context.temp_allocator) }
+input_empty :: proc(box: ^Box) -> bool { return len(box.input.buffer.buf) == 0 }
 
 make_arena :: proc() -> Allocator {
     arena := new(virtual.Arena)
@@ -175,23 +172,4 @@ make_arena :: proc() -> Allocator {
     return virtual.arena_allocator(arena) 
 }
 
-box_list :: proc(allocator: Allocator) -> [dynamic] ^Box {
-    return make([dynamic] ^Box, allocator = allocator)
-}
 
-input_empty :: proc(box: ^Box) -> bool {
-    return len(box.input.buffer.buf) == 0
-}
-
-is_child :: proc(box, parent: ^Box) -> bool {
-    if box == parent do return true
-    if box.parent == nil do return false
-    return is_child(box.parent, parent)
-}
-
-get_child_box :: proc(parent: ^Box, text: string) -> ^Box {
-    for child in parent.children {
-        if child.text == text do return child
-    }
-    return nil
-}
