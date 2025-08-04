@@ -3,7 +3,7 @@ A wrapper around the core:odin/doc-format
 
 The only option for you:
 everything := parse(filename, allocator)    
-    
+        
 (I recommend passing in a custom allocator / context.temp_allocator
 because cleaning up the produced mess would be annoying)
 
@@ -28,6 +28,9 @@ package doc_loader
 import "core:strings"
 import doc "core:odin/doc-format"
 import os "core:os/os2"
+import "core:mem/virtual"
+
+Entity_Kind :: doc.Entity_Kind
 
 LOAD_TYPES   :: false
 FREE_RAW_DATA :: true
@@ -187,6 +190,8 @@ load_entity :: proc(everything: ^Everything, entity_index: doc.Entity_Index) -> 
         column = auto_cast raw_entity.pos.column,
         offset = auto_cast raw_entity.pos.offset,
     }
+
+    if entity.pos.file == nil do return nil
     
     entity.name    = str(raw_entity.name)
     entity.body    = str(raw_entity.init_string)
@@ -212,10 +217,15 @@ load_entity :: proc(everything: ^Everything, entity_index: doc.Entity_Index) -> 
         entity.attributes[str(attribute.name)] = str(attribute.value)
     }
 
+    ihatethis: int
     entity.grouped_entities = make([] ^Entity, raw_entity.grouped_entities.length)
     for group_entity, i in doc.from_array(&header.base, raw_entity.grouped_entities) {
-        entity.grouped_entities[i] = load_entity(everything, group_entity)
+        entity.grouped_entities[i - ihatethis] = load_entity(everything, group_entity)
+        if entity.grouped_entities[i - ihatethis] == nil {
+            ihatethis += 1
+        }
     }
+    entity.grouped_entities = entity.grouped_entities[:len(entity.grouped_entities) - ihatethis]
 
     entity.where_clauses = make([] string, raw_entity.where_clauses.length)
     for where_clause, i in doc.from_array(&header.base, raw_entity.where_clauses) {
@@ -244,13 +254,24 @@ load_package :: proc(everything: ^Everything, pkg: doc.Pkg_Index) -> ^Package {
     the_package.flags    = raw_package.flags
     the_package.docs     = str(raw_package.docs)
 
-    the_package.files = make([] ^File, raw_package.files.length)
-    for index, i in doc.from_array(&header.base, raw_package.files) {
-        the_package.files[i] = load_file(everything, index)
+    if len(the_package.name) == 0 { 
+        // for the "base:builtin" package
+        return nil
     }
+
+    the_package.files = make([] ^File, raw_package.files.length)
+    ihatethis: int 
+    for index, i in doc.from_array(&header.base, raw_package.files) {
+        the_package.files[i - ihatethis] = load_file(everything, index)
+        if the_package.files[i] == nil {
+            ihatethis += 1
+        }
+    }
+    the_package.files = the_package.files[:len(the_package.files) - ihatethis]
     
     for entry, i in doc.from_array(&header.base, raw_package.entries) {
         entity := load_entity(everything, entry.entity)
+        if entity == nil { continue }
         the_package.entities[entity.name] = entity
     }
 
@@ -273,6 +294,7 @@ load_file :: proc(everything: ^Everything, file_index: doc.File_Index) -> ^File 
 
     file.path        = filename
     file.the_package = load_package(everything, raw_file.pkg)
+    if file.the_package == nil do return nil
 
     return file
 }
@@ -306,6 +328,7 @@ load :: proc(file: string, allocator := context.allocator) -> (result: Everythin
     }
     for _, i in doc.from_array(&header.base, header.pkgs) {
         pkg := load_package(&everything, auto_cast i)
+        if pkg == nil do continue
         everything.packages[pkg.fullpath] = pkg
         if doc.Pkg_Flag.Init in pkg.flags {
             everything.initial_package = pkg
@@ -314,6 +337,54 @@ load :: proc(file: string, allocator := context.allocator) -> (result: Everythin
 
     return everything, true
 }
+
+
+FileEntities :: struct { file: string, entities: [] string, types: [] Entity_Kind }
+fetch_all_entity_names :: proc(path: string, progress: ^[2] int = nil, allocator := context.allocator) -> (entities: [] FileEntities, ok: bool) {
+    files, err1 := os.read_all_directory_by_path(path, allocator) 
+    if err1 != nil do return {}, false
+
+    arena: virtual.Arena
+    _ = virtual.arena_init_growing(&arena)
+    file_allocator := virtual.arena_allocator(&arena)
+
+    if progress != nil do progress[1] = len(files)
+    entities = make([] FileEntities, len(files))
+    for file, i in files {
+        if !strings.ends_with(file.name, ".odin-doc") do continue
+
+        everything: Everything
+        everything._header, ok = read_documentation_file(file.fullpath, file_allocator)
+        if !ok do return {}, false
+
+        header := everything._header
+        context.user_ptr = &header.base
+        context.allocator = allocator
+
+        initial_package: doc.Pkg = doc.from_array(&header.base, header.pkgs)[0] if header.pkgs.length != 0 else {}
+        for pkg in doc.from_array(&header.base, header.pkgs) {
+            if doc.Pkg_Flag.Init in pkg.flags { initial_package = pkg }
+        }
+
+        ent_list  := make([] string, header.entities.length)
+        type_list := make([] doc.Entity_Kind, header.entities.length)
+        for entry, i in doc.from_array(&header.base, initial_package.entries) {
+            entity := doc.from_array(&header.base, header.entities)[entry.entity]
+            ent_list[i]  = strings.clone(doc.from_string(&header.base, entity.name), allocator)
+            type_list[i] = entity.kind
+        }
+        entities[i] = { file = file.name, entities = ent_list, types = type_list }
+
+        free_all(file_allocator)
+        if progress != nil do progress[0] = i + 1
+    }
+    virtual.arena_destroy(&arena)
+
+    return entities, true
+}
+
+
+
 
 when false {
 main :: proc() {

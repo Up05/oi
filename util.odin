@@ -2,26 +2,38 @@ package main
 
 import "base:runtime"
 import "core:fmt"
-import "core:time"
+import "core:reflect"
 import "core:strings"
-import "core:unicode/utf8"
-
+import "core:math"
+import "core:time"
 import "core:mem"
 import "core:mem/virtual"
+import "core:unicode/utf8"
+import "core:thread"
 
-import sdl "vendor:sdl2"
-import "vendor:sdl2/ttf"
+ThreadPool :: thread.Pool
+Task       :: thread.Task
+Builder    :: strings.Builder
+Allocator  :: mem.Allocator
 
-tick_now  :: time.tick_now
-tick_diff :: time.tick_diff
+Tick       :: time.Tick
+Duration   :: time.Duration
+tick_now   :: time.tick_now
+tick_diff  :: time.tick_diff
+
 fperf: map [string] time.Duration
 
-/*
-    when MEASURE_PERFORMANCE {
-        __start := tick_now() 
-        defer fperf[#location().procedure] += tick_diff(__start, tick_now())
-    }    
-*/ 
+trap :: runtime.debug_trap
+cat :: strings.concatenate
+
+start_main_thread_pool :: proc() {
+    thread.pool_init(&window.thread_pool, context.allocator, 3) 
+    thread.pool_start(&window.thread_pool)
+}
+
+do_async :: proc(procedure: thread.Task_Proc, data: rawptr = nil) {
+    thread.pool_add_task(&window.thread_pool, context.allocator, procedure, data)
+}
 
 // I believe that the most useful feature of Regex is easily the '.*'
 // as of right now, odin-lang does not have the "full" regex compiler
@@ -40,6 +52,10 @@ dotstar :: proc(plaintext, dotstar_regex: string) -> bool {
     return true
 }
 
+eat :: proc(value: $T, error: $E) -> T {
+    return value
+}
+
 package_name_from_path :: proc(file: string) -> string {
     file := file
     
@@ -55,27 +71,52 @@ package_name_from_path :: proc(file: string) -> string {
     return file
 }
 
-ptr_sub :: proc(a, b: rawptr) -> int {
-    return transmute(int) a - transmute(int) b
+abs_vector :: proc(a: Vector) -> Vector { return { math.abs(a.x), math.abs(a.y) } }
+min_vector :: proc(a, b: Vector) -> Vector { return { min(a.x, b.x), min(a.y, b.y) } }
+max_vector :: proc(a, b: Vector) -> Vector { return { max(a.x, b.x), max(a.y, b.y) } }
+max_abs_vector :: proc(a, b: Vector) -> Vector {
+    a2 := abs_vector(a)
+    b2 := abs_vector(b)
+    return { a.x if a2.x > b2.x else b.x, a.y if a2.y > b2.y else b.y } 
 }
 
-make_arena_alloc :: proc() -> mem.Allocator {
-    arena := new(virtual.Arena)
-    _ = virtual.arena_init_growing(arena)
-    return virtual.arena_allocator(arena) 
+get_smoothed_frame_time :: proc() -> Duration {
+    a := scale64(cast(i64) frame_time_taken, 0.3)
+    b := scale64(cast(i64) other_frame_times, 0.7)
+    return cast(Duration) (a + b)
+}
+
+// box <-> box collision detection (used for rendering text only when box is visible on screen)
+AABB :: proc(a, a_size, b, b_size: Vector) -> bool {
+    return  (a.x <= b.x + b_size.x && a.x + a_size.x >= b.x) &&
+            (a.y <= b.y + b_size.y && a.y + a_size.y >= b.y)
 }
 
 intersects :: proc(a: Vector, b: Vector, b_size: Vector) -> bool {
     return a.x >= b.x && a.y >= b.y   &&   a.x <= b.x + b_size.x && a.y <= b.y + b_size.y
 }
 
-clicked_in :: proc(pos: Vector, size: Vector) -> bool {
-    return !window.events.cancel_click && 
-            window.events.click == .LEFT &&
-            intersects(window.mouse, pos, size)
+scale64 :: proc(x: i64, y: f64) -> i64 {
+    return i64(f64(x) * y)
+}
+scale8 :: proc(x: u8, y: f32) -> u8 {
+    return u8(min(f32(x) * y, 255))
 }
 
-proper_to_rgba :: proc(hex: u32) -> RGBA {
+scale :: proc(x: i32, y: f32) -> i32 {
+    return i32(f32(x) * y)
+}
+
+scale_vec :: proc(a: [2] i32, b: [2] f32) -> [2] i32 {
+    return { scale(a.x, b.x), scale(a.y, b.y) }
+}
+
+brighten :: proc(color: Color, percent: f32) -> Color {
+    return { scale8(color.r, percent), scale8(color.g, percent), scale8(color.b, percent), color.a }
+}
+
+// convert hex to [4] u8 (actually sdl.Color)
+rgba :: proc(hex: u32) -> Color {
     r : u8 = u8( (hex & 0xFF000000) >> 24 )
     g : u8 = u8( (hex & 0x00FF0000) >> 16 )
     b : u8 = u8( (hex & 0x0000FF00) >>  8 )
@@ -83,38 +124,36 @@ proper_to_rgba :: proc(hex: u32) -> RGBA {
     return { r, g, b, a }
 }
 
-to_rgba :: proc(hex: string) -> RGBA {
-    to_digit :: proc(ch: byte) -> byte {
-        return (ch - 'a' + 10) if ch >= 'a' else (ch - 'A' + 10) if ch >= 'A' else ch - '0'
+set_dynamic_array_length :: proc(array: ^[dynamic] $T, length: int) {
+    (transmute(^runtime.Raw_Dynamic_Array) array).len = length
+}
+
+
+// merge two structs (overrides first's non zero members with second's)
+// +-------------------------------------------------------------------
+// | A := Box { font = .REGULAR, background = .BG4 }
+// | B := Box {                  background = .BG1, border = true }
+// | C := merge(A, B)
+// | assert(C == { font = .REGULAR, background = .BG1, border = true })
+// +---
+merge :: proc(a: $T, b: T) -> T {
+    assert(reflect.is_struct(type_info_of(T)) )
+    a, b := a, b
+
+    type_info := reflect.struct_field_types(T)
+    offsets   := reflect.struct_field_offsets(T)
+    
+    for i in 0..<len(offsets) {
+        a_member := rawptr(uintptr(&a) + offsets[i])
+        b_member := rawptr(uintptr(&b) + offsets[i])
+        size := type_info[i].size
+
+        // if !mem.check_zero_ptr(a_member, size) do continue // yes to overriding
+        if  mem.check_zero_ptr(b_member, size) do continue
+        
+        mem.copy(a_member, b_member, size)
     }
-
-    result: RGBA
-    result.r = to_digit(hex[0]) * 16 + to_digit(hex[1])
-    result.g = to_digit(hex[2]) * 16 + to_digit(hex[3])
-    result.b = to_digit(hex[4]) * 16 + to_digit(hex[5])
-    result.a = to_digit(hex[6]) * 16 + to_digit(hex[7])
-
-    return result
-}
-
-or_die :: proc(value: $T, error: $E) -> T {
-    assert(error == nil)
-    return value
-}
-
-eat :: proc(value: $T, error: $E) -> T {
-    return value
-}
-
-is_any :: proc(a: $T, b: ..T) -> bool {
-    for possibility in b {
-        if a == possibility do return true
-    }
-    return false
-}
-
-is_identifier_char :: proc(ch: byte) -> bool {
-    return (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || ch == '_' || ch == '#' || ch == '@'
+    return a
 }
 
 last_rune_size :: proc(bytes: [] byte) -> int {
@@ -122,69 +161,37 @@ last_rune_size :: proc(bytes: [] byte) -> int {
     return n
 }
 
-clone_and_replace_chars :: proc(str: string, from: byte, to: byte, allocator := context.allocator) -> string {
-    new_str := fmt.aprint(str, allocator = allocator)
-    for i in 0..<len(new_str) {
-        if new_str[i] == from do  (transmute([]byte) new_str)[i] = to
+cstr :: proc(text: string) -> cstring { 
+    return strings.clone_to_cstring(text, context.temp_allocator) 
+}
+
+up_to :: proc(text: string, limit: int) -> string {
+    return text[:min(len(text), limit)]
+}
+
+make_arena :: proc() -> Allocator {
+    arena := new(virtual.Arena)
+    _ = virtual.arena_init_growing(arena)
+    return virtual.arena_allocator(arena) 
+}
+
+box_list :: proc(allocator: Allocator) -> [dynamic] ^Box {
+    return make([dynamic] ^Box, allocator = allocator)
+}
+
+input_empty :: proc(box: ^Box) -> bool {
+    return len(box.input.buffer.buf) == 0
+}
+
+is_child :: proc(box, parent: ^Box) -> bool {
+    if box == parent do return true
+    if box.parent == nil do return false
+    return is_child(box.parent, parent)
+}
+
+get_child_box :: proc(parent: ^Box, text: string) -> ^Box {
+    for child in parent.children {
+        if child.text == text do return child
     }
-    return new_str
+    return nil
 }
-
-corrupt_to_cstr :: proc(str: string) -> (out: cstring, original: byte, original_at: int) {
-    // If the segfault points to this function
-    // it means the passed string was stack allocated.
-    // just don't use this function for whatever you're using it for...
-    buf := transmute([] byte) str
-    #no_bounds_check original = buf[len(str)]
-    #no_bounds_check buf[len(str)] = 0
-    return cstring(raw_data(str)), original, len(str)
-}
-
-uncorrupt_cstr :: proc(cstr: cstring, original: byte, original_at: int) -> string {
-    slice := runtime.Raw_Slice { data = rawptr(cstr), len = original_at }
-    #no_bounds_check (transmute([] byte) slice) [original_at] = original
-    return transmute(string) slice
-}
-
-concat_to_cstr :: proc(strings: ..string) -> cstring {
-    buffer_length: int
-    for s in strings { buffer_length += len(s) }
-    
-    buffer := make_slice([] byte, buffer_length + 1)
-
-    pos: int
-    for s in strings {
-        runtime.mem_copy_non_overlapping(raw_data(buffer[pos:]), raw_data(s), len(s))
-        pos += len(s)
-    }
-
-    buffer[pos] = 0
-    return cstring(raw_data(buffer))
-}
-
-// should clone a string if it was allocated on the stack!
-// otherwise you will get a silent segfault and be sad
-text_to_texture :: proc(text: string, should_clone: bool, font := fonts.regular) -> (texture: Texture, size: Vector) {
-    draw_text :: ttf.RenderUTF8_Blended
-
-    if should_clone {
-        cstr := strings.clone_to_cstring(text)
-        defer delete(cstr)
-
-        text_surface := draw_text(font, cstr, colorscheme[.FG1])
-        if text_surface == nil do return nil, {}
-        defer sdl.FreeSurface(text_surface)
-        return sdl.CreateTextureFromSurface(window.renderer, text_surface), { text_surface.w, text_surface.h } 
-
-    } else {
-        cstr, original, original_at := corrupt_to_cstr(text)
-        defer uncorrupt_cstr(cstr, original, original_at)
-    
-        text_surface := draw_text(font, cstr, colorscheme[.FG1])
-        if text_surface == nil do return nil, {}
-        defer sdl.FreeSurface(text_surface)
-        return sdl.CreateTextureFromSurface(window.renderer, text_surface), { text_surface.w, text_surface.h } 
-    }
-}
-
-
