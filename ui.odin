@@ -269,6 +269,9 @@ setup_base_ui :: proc() {// {{{
 
     // toolbar_search.offset.x = &sidebar.min_size.x
     setup_sidebar(sidebar)
+
+    window.should_relayout = true
+
 }// }}}
 
 make_context_menu :: proc(target: ^Box, items: [] Box) {// {{{
@@ -587,7 +590,7 @@ draw_box :: proc(box: ^Box, scroll_amount: Vector) {// {{{
 
         if box.progress != nil {
             p := box.progress^
-            fraction := f32(p[0]) / f32(p[1])
+            fraction := min(1, f32(p[0]) / f32(p[1]))
             draw_rectangle(pos + { scale(box.cached_size.x, fraction), 0 }, box.cached_size, box.design.loading_color)
         }
 

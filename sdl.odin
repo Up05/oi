@@ -80,9 +80,11 @@ begin_frame :: proc() {
     sdl.SetRenderDrawColor(window.renderer, 0, 0, 0, 255)
     sdl.RenderClear(window.renderer)
     frame_start_time = tick_now()
+    window.onframe = true
 }
 
 end_frame :: proc() {
+    window.onframe = false
     frame_time_taken = tick_diff(frame_start_time, tick_now())
     other_frame_times = get_smoothed_frame_time()
     debug.box_drawn = 0
@@ -104,6 +106,87 @@ handle_resize :: proc() {
     if math.abs(delta_size.x) > 2 || math.abs(delta_size.y) > 2 {
         window.should_relayout = true
     }
+}
+
+// its a mess, but also, just don't look, i guess
+@(private="file") packages_done: int
+@(private="file") done_packages: [dynamic] string
+recache :: proc() {
+    
+    do_async(proc(task: Task) {
+        cache_everything(&progress_metrics.the_recaching, &done_packages)
+    })
+    
+    mid_frame := window.onframe
+    if mid_frame do end_frame()
+
+    Message :: struct { tex: Texture, size: Vector }
+    message  : Message
+    messages : [dynamic] Message
+    
+    sum_height :: proc(msgs: [dynamic] Message) -> (height: i32) {
+        for m in msgs do height += m.size.y; return
+    } 
+
+    message.tex, message.size = render_text("CREATING ODIN PACKAGE CACHE:", .LARGE, .FG2)
+    append(&messages, message)
+
+    append(&messages, Message {})
+
+    prev_cache_at_frame := window.frames
+    prev_cache_progress := 0
+
+    resume_requested_at := max(int)
+
+    for !window.should_exit {
+        poll_events()
+        begin_frame()
+        defer end_frame()
+        if window.should_relayout do update_layout()
+        draw_window()
+        for i in 0..<10 { pop_box_from_any_queue() }
+        progress := progress_metrics.the_recaching
+
+        resume: bool
+        resume |= window.frames - prev_cache_at_frame > CONFIG_MAX_FPS * 2
+        resume |= progress[0] >= progress[1] 
+
+        draw_rectangle({ 0, 0 }, window.size, .BG3)
+
+        if messages[1].tex != nil { destroy_texture(messages[1].tex) }
+        messages[1].tex, messages[1].size = render_text(
+            fmt.aprintf("progress: %d / %d", progress[0], progress[1], allocator = context.temp_allocator), 
+            .MONO, .FG2)
+
+        for i in packages_done..<len(done_packages) {
+            message.tex, message.size = render_text(
+                fmt.aprintf("cached %s", done_packages[i], allocator = context.temp_allocator), 
+                .MONO, .FG2)
+            append(&messages, message)
+        }
+        packages_done = len(done_packages)
+
+        pos: Vector = { 8, min(8, window.size.y - sum_height(messages)) }
+        for msg in messages {
+            draw_texture(pos, msg.size, msg.tex)
+            pos.y += msg.size.y
+        }
+        
+        if resume && resume_requested_at == max(int) do resume_requested_at = window.frames
+        if window.frames - resume_requested_at > CONFIG_MAX_FPS * 4 do break
+
+        if prev_cache_progress != progress[0] do prev_cache_at_frame = window.frames
+        prev_cache_progress = progress[0]
+    }
+
+    if mid_frame do begin_frame()
+
+    for message in messages {
+        destroy_texture(message.tex)
+    }
+    delete(messages)
+    // clear(&done_packages)
+    // delete(done_packages)
 }
 
 // }}}

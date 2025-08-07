@@ -25,6 +25,7 @@ kb_focus_search :: proc() {// {{{
 }// }}}
 
 kb_focus_address :: proc() {// {{{
+    window.boxes.sidebar.scroll.pos = {}
     window.active_input = window.boxes.address
 }// }}}
 
@@ -80,7 +81,7 @@ kb_toggle_debug_menu :: proc() {// {{{
 }// }}}
 
 kb_recache_everything :: proc() {
-    panic("TODO (import from prev version + threads + progress)")
+    recache()
 }
 
 kb_open_nexus   :: proc() { open_module_by_name("nexus") }

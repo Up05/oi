@@ -107,11 +107,12 @@ open_odin_package :: proc(userdata: rawptr) {// {{{
         }
     }
 
-    box := append_box(tab, { font = .LARGE, margin = { 0, 12 }, scroll = tab.scroll, text = the_package.name })
+    append_box(tab, { font = .LARGE, margin = { 0, 12 }, scroll = tab.scroll, text = the_package.name })
     if len(the_package.docs) > 0 {
-        append_box(tab, template, { text = the_package.docs })
+        append_box(tab, template, { font = .MONO, text = the_package.docs })
     }
 
+    append_box(tab, { font = .LARGE, margin = { 0, 12 }, scroll = tab.scroll, text = "TYPES" })
     for _, entity in the_package.entities {
         if entity.kind == .Type_Name { // <--
             box := append_box(tab, template_code, { text = format_code_block(entity), entity = entity })
@@ -120,6 +121,7 @@ open_odin_package :: proc(userdata: rawptr) {// {{{
         }
     }
 
+    append_box(tab, { font = .LARGE, margin = { 0, 12 }, scroll = tab.scroll, text = "PROCEDURES" })
     for _, entity in the_package.entities {
         if entity.kind == .Procedure {
             box := append_box(tab, template_code, { text = format_code_block(entity), entity = entity })
@@ -128,6 +130,7 @@ open_odin_package :: proc(userdata: rawptr) {// {{{
         }
     }
 
+    append_box(tab, { font = .LARGE, margin = { 0, 12 }, scroll = tab.scroll, text = "PROCEDURE GROUPS" })
     for _, entity in the_package.entities {
         if entity.kind == .Proc_Group {
             box := append_box(tab, template_code, { text = format_code_block(entity), entity = entity })
@@ -136,6 +139,7 @@ open_odin_package :: proc(userdata: rawptr) {// {{{
         }
     }
 
+    append_box(tab, { font = .LARGE, margin = { 0, 12 }, scroll = tab.scroll, text = "VARIABLES / CONSTANTS" })
     for _, entity in the_package.entities {
         if entity.kind == .Constant || entity.kind == .Variable {
             box := append_box(tab, template_code, { text = format_code_block(entity), entity = entity })
@@ -229,7 +233,6 @@ setup_sidebar :: proc(parent: ^Box) {// {{{
 
     append_box(parent, template, { text = "nexus" })
     
-
     append(&module_name_list, "nexus")
 
     file_details, ok := list_dir("cache")

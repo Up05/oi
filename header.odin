@@ -188,6 +188,7 @@ window : struct {
     should_relayout : bool,
     should_relayout_later: bool,
 
+    onframe : bool, // true when in the middle of a frame
     frames  : int,
     size    : Vector,
     mouse   : Vector,
@@ -244,8 +245,9 @@ debug : struct {
 FONTS: [FontType] Font
 
 progress_metrics : struct {
-    nexus_loader  : [2] int // [0] progress [1] max
-
+    // [0] progress [1] max
+    nexus_loader  : [2] int, 
+    the_recaching : [2] int,
 
 }
 

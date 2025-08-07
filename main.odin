@@ -15,8 +15,11 @@ CONFIG_SEARCH_METHOD_WIDTH   :: 96
 CONFIG_EMPTY_TAB_NAME        :: "empty tab"
 CONFIG_CURSOR_REFRESH_RATE   :: CONFIG_MAX_FPS // = 1s 
 CONFIG_CODE_LINE_SPACING     :: 2
-CONFIG_WHAT_IS_LONG_PROC     :: 50   // chars
-CONFIG_SET_CHILDREN_STRAIGHT :: true // whether ':' aligned in structs
+CONFIG_WHAT_IS_LONG_PROC     :: 50    // chars
+CONFIG_SET_CHILDREN_STRAIGHT :: true  // whether ':' aligned in structs
+CONFIG_CACHING_PKG_TIMEOUT   :: 7500  // fast, but may create ~200 processes, each "pinning" core
+CONFIG_CACHING_DO_SERIALLY   :: false // very slow, but does not choke the machine
+
 
 // almost all are untested: good luck!
 // WIN10   = { "open",     "{FILE}"         }, 
@@ -31,6 +34,7 @@ CONFIG_SET_CHILDREN_STRAIGHT :: true // whether ':' aligned in structs
 // KATE    = { "kate",        "--line",         "{LINE}",         "{FILE}" },
 // ZED     = { "zed",         "{FILE}:{LINE}:0"                            },
 // HELIX   = { "hx",          "{FILE}:{LINE}"                              },
+// also, do not use double quotes for paths and etc. here " is the same as \"
 EDITOR_COMMAND: [] string = 
     { "open",     "-t",   "{FILE}" } when ODIN_OS == .Darwin else
     { "xdg-open", "{FILE}"         } when ODIN_OS == .Linux  else
@@ -99,11 +103,22 @@ KEYBINDS := [] Bind {
     { key = .NUM5, mods = { .CTRL }, func = kb_switch_tab_5,   name = "Switch to tab 5" },
 }
 
+// fullpaths are valid
+// plus, could add libs to $ODIN_ROOT
+CACHE_DIRECTORIES: [] string : {
+    "base", "core", "vendor", "/home/ulti/src/oi"
+}
+
+
 main :: proc() {
 
     start_main_thread_pool()
 
     init_graphics()
+
+    if !is_cache_ok() { 
+        recache() 
+    }
     setup_base_ui()
 
     for !window.should_exit {
@@ -122,4 +137,42 @@ main :: proc() {
     }
 
 }
+
+/*
+    The Big Ideas
+
+    1.  Custom doc format, that would support package aliassing in a way, I can understand,
+        Would not repeat packages per file. Would not give null things on only base packages.
+        Would and would not ...
+
+    2.  MAYBE Remark system (users can submit comments on procedures/types/whatever)
+        But that's annoying to do from the technical side, because security
+        Plus, I'd need to set up, maintain and protect/moderate a server...
+ 
+    3.  MAYBE (If I'm allowed to) scrape the original docs of some bindings, e.g.: SDL
+ 
+*/
+
+/*
+    "T0DO" Is Yellow (And It's Annoying)
+
+    ! font licensing
+    - draw mixed code/docs (for package docs, see: small_array)
+    - cull package imports
+    - test on my laptop (i hate my life)
+    - horizontal scrolling
+    - maybe nice installation? like File Pilot...
+    - accessibility
+        - does odin have screen reader anything???
+        - using terms when describing types (not, like: "colon color struct curly bracket x color package period type <pause> ..."
+          should be "struct 'that has' x 'of type' package dot type" is that possible? who knows...
+        - keybinds to navigate over boxes.content
+          and activate screen reader (cause fuck man... it must be annoying as hell when it is just always saying shit)
+    - test with newer odin versions
+    - [let someone else] test on windows
+    - is there a problem with search a group of packages?..
+    
+
+    - fix various formatting issues (1st big idea)
+*/
 
