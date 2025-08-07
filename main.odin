@@ -4,36 +4,38 @@ import "core:fmt"
 
 MEASURE_PERFORMANCE          :: false
 
-CONFIG_MAX_FPS               :: 60   
-CONFIG_FONT_SIZE             :: 16
-CONFIG_LARGE_FONT_SIZE       :: 24
-CONFIG_SCROLLBAR_WIDTH       :: 15
-CONFIG_SEARCH_PANEL_CLOSED   :: 15  // in pixels
-CONFIG_SEARCH_PANEL_OPEN     :: 400 
+CONFIG_MAX_FPS               :: 60 
+CONFIG_FONT_SIZE             :: 16 
+CONFIG_LARGE_FONT_SIZE       :: 24 
+CONFIG_SCROLLBAR_WIDTH       :: 15 
+CONFIG_SEARCH_PANEL_CLOSED   :: 15 
+CONFIG_SEARCH_PANEL_OPEN     :: 400
 CONFIG_TAB_WIDTH             :: 32 
-CONFIG_SEARCH_METHOD_WIDTH   :: 96
-// CONFIG_INITIAL_SEARCH_METHOD :: SearchMethod.CONTAINS
+CONFIG_SEARCH_METHOD_WIDTH   :: 96 
 CONFIG_EMPTY_TAB_NAME        :: "empty tab"
-CONFIG_CURSOR_REFRESH_RATE   :: CONFIG_MAX_FPS
+CONFIG_CURSOR_REFRESH_RATE   :: CONFIG_MAX_FPS // = 1s 
+CONFIG_CODE_LINE_SPACING     :: 2
+CONFIG_WHAT_IS_LONG_PROC     :: 50   // chars
+CONFIG_SET_CHILDREN_STRAIGHT :: true // whether ':' aligned in structs
 
-CONFIG_UI_BG1       :: "282828FF"
-CONFIG_UI_BG2       :: "3C3836FF"
-CONFIG_UI_BG3       :: "504945FF"
-CONFIG_UI_FG1       :: "FBF1C7FF"
-CONFIG_UI_FG2       :: "EBDBB2FF"
-CONFIG_UI_CODE      :: "B8BB26FF"
-CONFIG_UI_BLUE      :: "458588FF"
+// almost all are untested: good luck!
+// WIN10   = { "open",     "{FILE}"         }, 
+// LINUX   = { "xdg-open", "{FILE}"         }, 
+// MACOS   = { "open",     "-t",   "{FILE}" },
+// NVIM    = { "nvim",        "+{LINE}",        "{FILE}"                   },
+// EMACS   = { "emacsclient", "+{LINE}:0",      "{FILE}"                   },
+// VSCODE  = { "code",        "--goto",         "{FILE}:{LINE}:0"          },
+// SUBLIME = { "subl",        "{FILE}:{LINE}"                              },
+// CLION   = { "clion",       "--line",         "{LINE}",         "{FILE}" },
+// NPP     = { "notepad++",   "{FILE}",         "-n{LINE}"                 },
+// KATE    = { "kate",        "--line",         "{LINE}",         "{FILE}" },
+// ZED     = { "zed",         "{FILE}:{LINE}:0"                            },
+// HELIX   = { "hx",          "{FILE}:{LINE}"                              },
+EDITOR_COMMAND: [] string = 
+    { "open",     "-t",   "{FILE}" } when ODIN_OS == .Darwin else
+    { "xdg-open", "{FILE}"         } when ODIN_OS == .Linux  else
+    { "open",     "{FILE}"         } 
 
-CONFIG_CODE_SYMBOL    : u32 : 0xFFFF00FF
-CONFIG_CODE_KEYWORD   : u32 : 0xFF0000FF
-CONFIG_CODE_NAME      : u32 : 0x77FFBBFF
-CONFIG_CODE_DIRECTIVE : u32 : 0x7700FFFF
-CONFIG_CODE_STRING    : u32 : 0x770000FF
-CONFIG_CODE_NUMBER    : u32 : 0xCC00CCFF
-
-CONFIG_SET_THE_CHILDREN_STRAIGHT :: true
-CONFIG_CODE_LINE_SPACING :: 2
-CONFIG_WHAT_IS_LONG_PROC :: 50
 
 COLORS := [Palette] Color {
     .TRANSPARENT = {},
@@ -68,6 +70,35 @@ COLORS := [Palette] Color {
     .ORANGE2 = rgba(0xFE8019FF),
 }
 
+KEYBINDS := [] Bind {
+    { key = .ESCAPE, mods = {},         func = kb_exit_textbox,     name = "Exit active textbox" },
+    { key = .TAB,    mods = {},         func = kb_goto_next_result, name = "Go to next search result" },
+    { key = .TAB,    mods = { .SHIFT }, func = kb_goto_prev_result, name = "Go to previous search result" },
+
+    { key = .W, mods = { .CTRL }, func = kb_close_tab,              name = "Close tab" },
+    { key = .S, mods = { .CTRL }, func = kb_focus_search,           name = "Focus in-package search" },
+    { key = .T, mods = { .CTRL }, func = kb_focus_address,          name = "Focus package address" },
+    { key = .G, mods = { .CTRL }, func = kb_open_code_in_editor,    name = "View code block in editor" },
+
+    { key = .N, mods = { .ALT },  func = kb_open_nexus,   name = "Open nexus" },
+    { key = .R, mods = { .ALT },  func = kb_open_raylib,  name = "Open raylib" },
+    { key = .V, mods = { .ALT },  func = kb_open_vulkan,  name = "Open vulkan" },
+    { key = .O, mods = { .ALT },  func = kb_open_os2,     name = "Open os2" },
+    { key = .S, mods = { .ALT },  func = kb_open_strings, name = "Open strings" },
+    { key = .M, mods = { .ALT },  func = kb_open_math,    name = "Open math" },
+    { key = .L, mods = { .ALT },  func = kb_open_linalg,  name = "Open linalg" },
+    { key = .U, mods = { .ALT },  func = kb_open_utf8,    name = "Open utf8" },
+
+    { key = .F1, mods = {}, func = kb_toggle_debug_menu,    name = "Toggle debug menu" },
+    { key = .F5, mods = {}, func = kb_recache_everything,   name = "recache all code" },
+
+    { key = .NUM1, mods = { .CTRL }, func = kb_switch_tab_1,   name = "Switch to tab 1" },
+    { key = .NUM2, mods = { .CTRL }, func = kb_switch_tab_2,   name = "Switch to tab 2" },
+    { key = .NUM3, mods = { .CTRL }, func = kb_switch_tab_3,   name = "Switch to tab 3" },
+    { key = .NUM4, mods = { .CTRL }, func = kb_switch_tab_4,   name = "Switch to tab 4" },
+    { key = .NUM5, mods = { .CTRL }, func = kb_switch_tab_5,   name = "Switch to tab 5" },
+}
+
 main :: proc() {
 
     start_main_thread_pool()
@@ -91,13 +122,4 @@ main :: proc() {
     }
 
 }
-
-// TODO before merge:
-//   + allocate the text box string and assure that it is 0 terminated
-//   + (only)  onscreen/lazy collapsing of boxes
-//   + codeblocks
-//   + context menus
-//   + get all of the gruvbox palette
-//   (after LATE) command palette
-//   (after) ghost text?
 

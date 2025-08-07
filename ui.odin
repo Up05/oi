@@ -28,6 +28,14 @@ get_child_box :: proc(parent: ^Box, text: string) -> ^Box {// {{{
     return nil
 }// }}}
 
+get_child_box_recursive :: proc(parent: ^Box, text: string) -> ^Box {// {{{
+    for child in parent.children {
+        if child.text == text do return child
+        if box := get_child_box_recursive(child, text); box != nil do return box 
+    }
+    return nil
+}// }}}
+
 get_parent_of_type :: proc(box: ^Box, type: BoxType) -> ^Box {// {{{
     if box == nil do return nil
     if box.type == type do return box
@@ -83,6 +91,9 @@ init_box :: proc(box: ^Box, parent: ^Box) {// {{{
     // calculating (to-be-rendered) text size
     if len(box.text) > 0 {
         box.text = strings.clone(box.text, box.allocator) 
+        // this is ignores new lines and is later replaced,
+        // but I guess, it is good to not have 0 tex_size... or smth... 
+        // + later can make my own
         box.tex_size = measure_text(box.text, box.font)
         if box.min_size == {} do box.min_size = box.tex_size
         if box.padding.y != 0 && box.min_size.y != 0 {
@@ -254,27 +265,9 @@ setup_base_ui :: proc() {// {{{
         click     = search_click_handler,
         submit    = search_submit_handler,
     })
-    // toolbar_search.offset.x = &sidebar.min_size.x
-    sidebar_search := append_box(sidebar, {
-        type      = .TEXT_INPUT,
-        min_size  = { -4, CONFIG_FONT_SIZE + 4 }, //  - sidebar.min_size.x
-        position  = { 2, 2 },
-        padding   = { 4, 1 },
-        margin    = { 0, 8 },
-        design    = { 
-            foreground    = .FG2, 
-            background    = .BG3, 
-            active_color  = .BG4, 
-            hovered_color = .BG4,
-            ghost_color   = .FG4,
-        },  
-        border    = true,
-        border_in = true,
-        font      = .MONO,
-        text      = "open module",
-        click     = search_click_handler,
-    })
+    window.boxes.search = toolbar_search
 
+    // toolbar_search.offset.x = &sidebar.min_size.x
     setup_sidebar(sidebar)
 }// }}}
 
@@ -285,7 +278,7 @@ make_context_menu :: proc(target: ^Box, items: [] Box) {// {{{
         padding       = { 4, 4 },
         border        = true,
         background    = .BG3,
-        offset        = { new_clone(window.mouse.x), new_clone(target.cached_pos.y + target.cached_size.y) },
+        position      = ({ window.mouse.x, target.cached_pos.y + target.cached_size.y } - target.cached_scroll),
         target        = target
     }
 
@@ -301,10 +294,6 @@ make_context_menu :: proc(target: ^Box, items: [] Box) {// {{{
         hovered_color = .BG4,
         active_color  = .GRAY1,
         target        = target,
-        click         = proc(item: ^Box) {
-            item.target.method = auto_cast (transmute(u64) item.userdata)
-            fmt.println("SEARCH METHOD:", item.target.method)
-        }
     }
 
     for item in items { 
@@ -334,35 +323,67 @@ make_context_menu :: proc(target: ^Box, items: [] Box) {// {{{
     window.should_relayout = true
 }// }}}
 
-update_text_input :: proc(search: ^Box) {// {{{
-    if len(search.buffer.buf) == 0 {
-        if search.tex != nil { destroy_texture(search.tex) }
-        search.tex, search.tex_size = render_text(search.text, search.font, search.ghost_color)
-        search.old_size = search.tex_size
+update_text_input :: proc(box: ^Box) {// {{{
+    if box.tex != nil { destroy_texture(box.tex); box.tex = nil }
+    if box.ghost_tex != nil { destroy_texture(box.ghost_tex); box.ghost_tex = nil }
+
+    if len(box.buffer.buf) == 0 {
+        if box.tex != nil { destroy_texture(box.tex) }
+        box.tex, box.tex_size = render_text(box.text, box.font, box.ghost_color)
+        box.old_size = box.tex_size
         return
     }
 
-    if search.tex != nil { 
-        destroy_texture(search.tex)
-    }
-    delete_slice(search.offsets)
-    search.offsets = make([] int, len(search.buffer.buf) + 1  +4)
+    delete_slice(box.offsets)
+    box.offsets = make([] int, len(box.buffer.buf) + 1  +4)
 
     x := 0
-    for r, i in strings.to_string(search.buffer) {
-        x += measure_rune_advance(r, search.font)
+    for r, i in strings.to_string(box.buffer) {
+        x += measure_rune_advance(r, box.font)
 
         rune_size := utf8.rune_size(r)
         for j in 0..<rune_size {
-            search.offsets[i+1 + j] = x
+            box.offsets[i+1 + j] = x
         }
     }
 
-    search.tex, search.tex_size = render_text(strings.to_string(search.buffer), search.font, search.foreground)
-    search.old_size = search.tex_size
+    box.tex, box.tex_size = render_text(strings.to_string(box.buffer), box.font, box.foreground)
+    box.old_size = box.tex_size
 
     window.text_cursor_visible = true
     window.text_cursor_change_state_in = CONFIG_CURSOR_REFRESH_RATE
+
+    if len(box.buffer.buf) > 1 && box.suggestions != nil {
+
+        for suggestion in box.suggestions {
+            if len(suggestion) < len(box.buffer.buf) do continue
+
+            if strings.starts_with(suggestion, string(box.buffer.buf[:])) {
+                box.ghost_text = suggestion[len(box.buffer.buf):]
+                box.ghost_tex, box.ghost_size = render_text(box.ghost_text, box.font, box.ghost_color)
+                return
+            }
+        }
+        
+        min_distance := max(int)
+        min_result: string
+        for suggestion in box.suggestions {
+            if len(suggestion) < len(box.buffer.buf) do continue
+
+            distance := strings.levenshtein_distance(suggestion, string(box.buffer.buf[:]))
+            if distance < min_distance {
+                min_distance = distance
+                min_result = suggestion
+            }
+        }
+
+        if min_distance < 3 {
+            box.ghost_text = min_result[len(box.buffer.buf):]
+            box.ghost_tex, box.ghost_size = render_text(box.ghost_text, box.font, box.ghost_color)
+        }
+
+    }
+
 }// }}}
 
 // ==================================================================================
@@ -538,7 +559,7 @@ draw_box :: proc(box: ^Box, scroll_amount: Vector) {// {{{
     }
 
     box_visible := !box.hidden
-    box_visible &= AABB(pos, min_vector(box.cached_size, pos + get_clip_area_size()), {}, window.size)
+    box_visible &= AABB(pos, { min( box.cached_size.x, pos.x + get_clip_area_size().x ), box.cached_size.y }, {}, window.size)
 
     if box_visible { 
         if !box.render_scheduled && !box.rendered {
@@ -571,11 +592,20 @@ draw_box :: proc(box: ^Box, scroll_amount: Vector) {// {{{
         }
 
         if box == window.active_input { draw_text_select(box) }
+
         draw_texture(pos + box.padding/2 + { 0, 2 }, min_vector(box.tex_size, box.cached_size), box.tex)
+
+        ghost_texture_position := pos + box.padding/2 + { box.tex_size.x, 2 }
+        draw_texture(ghost_texture_position, min_vector(box.ghost_size, box.cached_size - ghost_texture_position), box.ghost_tex)
+
         if box == window.active_input { draw_text_cursor(box) }
 
         if box.border {
-            draw_border_raw(pos, box.cached_size, box.background, box.border_in) 
+            if box == window.hot_boxes.active_input {
+                draw_border_raw(pos, box.cached_size, .GRAY1, box.border_in) 
+            } else {
+                draw_border_raw(pos, box.cached_size, box.background, box.border_in) 
+            }
         }
         
         debug.box_drawn += 1
@@ -617,19 +647,21 @@ draw_debug_info :: proc() { // {{{
    POS: % 4d % 4d
   SIZE: % 4d % 4d
  MSIZE: % 4d % 4d
- TSIZE: % 4d % 4d
+ TSIZE: % 4d % 4d (%v)
   TYPE: %v
   TEXT: %q
 SCROLL: %v/%v`, name,
                 b.cached_pos.x,  b.cached_pos.y, 
                 b.cached_size.x, b.cached_size.y,
                 b.min_size.x,    b.min_size.y,
-                b.tex_size.x,    b.tex_size.y,
+                b.tex_size.x,    b.tex_size.y, b.tex,
                 b.type,          up_to(b.text, 25),
                 b.scroll.pos,    b.scroll.max,
                 allocator = context.temp_allocator
         )   
     }// }}}
+
+    if !debug.show do return
 
     texts := make([dynamic] string, context.temp_allocator)
 

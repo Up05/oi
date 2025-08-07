@@ -12,8 +12,9 @@ Surface   :: ^sdl.Surface
 Font      :: ^ttf.Font
 Window    :: ^sdl.Window
 Renderer  :: ^sdl.Renderer
-Event     :: ^sdl.Event
+Event     ::  sdl.Event
 Color     ::  sdl.Color
+Key       ::  sdl.Keycode
 
 destroy_texture :: sdl.DestroyTexture
 
@@ -50,21 +51,12 @@ init_graphics :: proc() {
     sdl.SetRenderDrawBlendMode(window.renderer, .BLEND)
     sdl.SetWindowMinimumSize(window.handle, 600, 200)
 
-    do_async(proc(task: Task) {
-        temp_entity_table, ok := docl.fetch_all_entity_names("cache", progress = &progress_metrics.nexus_loader, allocator = make_arena())
-        assert(ok)
-
-        slice.sort_by(temp_entity_table, proc(a, b: docl.FileEntities) -> bool { return a.file < b.file })
-        
-        entity_table = temp_entity_table
-
-        fmt.println("finished indexing nexus")
-    })
 }
 
 poll_events :: proc() {
 
     event: sdl.Event
+
     for sdl.PollEvent(&event) {
         #partial switch event.type {
         case .QUIT:         window.should_exit = true
@@ -75,14 +67,13 @@ poll_events :: proc() {
             window.pressed      = auto_cast event.button.button
         case .MOUSEBUTTONUP:
             window.pressed = .NONE
-        case .KEYDOWN, .TEXTINPUT: 
-            handle_keypress(event)
         case: 
         }
     }
 
     sdl.GetMouseState(&window.mouse.x, &window.mouse.y)
 
+    window.events.base = event
 }
 
 begin_frame :: proc() {
@@ -152,6 +143,7 @@ draw_texture :: proc(pos, size: Vector, texture: Texture) {
 }
 
 render_text :: proc(text: string, font: FontType, color: Palette) -> (t: Texture, size: Vector) {
+    if len(text) == 0 do return
     rgba := COLORS[color]
     font := FONTS[font]
     surface := ttf.RenderUTF8_Blended_Wrapped(font, cstr(text), rgba, 0)
@@ -210,6 +202,9 @@ handle_premultiplied_alpha_compositing :: proc(texture: Texture) {
     )
 }
 
+copy :: proc(text: string) {
+    sdl.SetClipboardText(cstr(text))
+}
 
 
 

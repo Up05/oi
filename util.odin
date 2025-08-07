@@ -10,6 +10,7 @@ import "core:mem"
 import "core:mem/virtual"
 import "core:unicode/utf8"
 import "core:thread"
+import docl "doc-loader"
 
 ThreadPool :: thread.Pool
 Task       :: thread.Task
@@ -27,6 +28,20 @@ fperf: map [string] time.Duration
 
 trap :: runtime.debug_trap
 cat :: strings.concatenate
+
+view_in_editor :: proc(entity: ^Entity) {
+    int_to_str :: proc(num: int) -> string { return fmt.aprint(num, allocator = context.temp_allocator) }
+    pos := entity.pos
+
+    editor_command := EDITOR_COMMAND
+    parameters, _ := strings.replace(
+        editor_command[1], "{FILE}", pos.file.path, 1, allocator = context.temp_allocator)
+    parameters, _  = strings.replace(
+        parameters, "{LINE}", int_to_str(pos.line), 1, allocator = context.temp_allocator)
+
+    ok := execute_command(editor_command[0], parameters)
+    if !ok do fmt.println("Failed to start process: ", editor_command[0], parameters)
+}
 
 start_main_thread_pool :: proc() {
     thread.pool_init(&window.thread_pool, context.allocator, 3) 

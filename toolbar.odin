@@ -8,6 +8,7 @@ current_tab :: proc() -> ^Tab {
 }
 
 switch_tabs :: proc(index: int) {
+    if index < 0 || index >= len(window.tabs) do return
     old_tab := current_tab()
     window.current_tab = index
     window.root.children[0] = &current_tab().box
@@ -73,35 +74,35 @@ new_tab :: proc(name: string) {
 }
 
 close_tab :: proc(tab_index: int, caller := #caller_location) {
-    old_tab := current_tab()
-    if old_tab.is_empty do return
+    {
+        old_tab := current_tab()
+        if old_tab.is_empty do return
 
-    clear(&old_tab.box_table)
-    clear(&old_tab.cache_queue)
-    clear_box(old_tab)
-    for box in old_tab.search {
-        clear_box(box)
-    }
+        clear(&old_tab.box_table)
+        clear(&old_tab.cache_queue)
+        clear_box(old_tab)
+        for box in old_tab.search { clear_box(box) }
 
-    free_all(old_tab.allocator) // <-- !!!
-
-    old_tab.scroll = {}
-
-    for box, i in window.boxes.toolbar.children {
-        if box == old_tab.toolbar_box {
-            ordered_remove(&window.boxes.toolbar.children, i)
+        for box, i in window.boxes.toolbar.children {
+            if box == old_tab.toolbar_box {
+                ordered_remove(&window.boxes.toolbar.children, i)
+            }
         }
+
+        free_all(old_tab.allocator) // <-- !!!
+        old_tab = {}
     }
 
     ordered_remove(&window.tabs, tab_index)
 
-    if len(window.tabs) > 0 {
-        // refresh_tabbar()
-    } else {
+    if len(window.tabs) <= 0 {
         new_tab(CONFIG_EMPTY_TAB_NAME)
     }
 
-    window.current_tab = len(window.tabs) - 1
+    if window.current_tab >= len(window.tabs) {
+        window.current_tab -= 1
+    }
+    switch_tabs(window.current_tab)
     window.should_relayout = true
 }
 

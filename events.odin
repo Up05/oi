@@ -11,12 +11,22 @@ import sdl "vendor:sdl2"
 MouseEvent :: proc(target: ^Box)
 
 emit_events :: proc() {// {{{
+    handle_keypress(window.events.base)
+
     box := window.hovered
     defer window.hovered = nil
     if box == nil do return
 
+    if window.events.click != .NONE { on_click(box) }
+    handle_scrollbar(box)
+
+}// }}}
+
+on_click :: proc(box: ^Box) {// {{{
+
+    // ================ COOLING HOT BOXES ================
     if window.active_context_menu != nil {
-        if window.events.click != .NONE && !is_child(box, window.active_context_menu) {
+        if !is_child(box, window.active_context_menu) {
             free_all(window.active_context_menu.allocator)
             window.active_context_menu = nil
             window.boxes.popup^ = template_default_popup()
@@ -24,37 +34,41 @@ emit_events :: proc() {// {{{
     }
 
     if window.active_input != nil {
-        if window.events.click != .NONE && box != window.active_input {
+        if box != window.active_input {
             window.active_input = nil
         }
     }
 
-    if window.events.click != .NONE && box != window.dragged_scrollbar {
-        clicked_on_link: bool
-        for link in box.links {
-            if intersects(window.mouse, box.cached_pos - box.cached_scroll + link.pos, link.size) {
-                anchor, ok := current_tab().box_table[link.target.name]
-                scroll_to(get_parent_of_type(box, .CONTAINER), anchor)
-                clicked_on_link = true
-            }
+    // ================ CANCELLING CLICKS ================
+    if box == window.dragged_scrollbar { return } 
+
+    // ================ CLICKING ON LINKS ================
+    for link in box.links {
+        if intersects(window.mouse, box.cached_pos - box.cached_scroll + link.pos, link.size) {
+            anchor, ok := current_tab().box_table[link.target.name]
+            scroll_to(get_parent_of_type(box, .CONTAINER), anchor)
+            return
         }
-        if !clicked_on_link && box.click != nil { box.click(box) }
     }
 
-    if box.scroll.pos.y < -15 {
-        fmt.printfln("Scrolled %d pixels, scroll.pos.y should ALWAYS be positive!", box.scroll.pos.y)
+    // ================ DEFAULT  CLICKING ================
+    if box.click != nil { 
+        box.click(box) 
     }
+}// }}}
+
+handle_scrollbar :: proc(box: ^Box) {// {{{
+    if box.scroll.pos.y < -15 { fmt.printfln("Scrolled %d pixels, don't make scroll negative!", box.scroll.pos.y) }
+
     s := window.events.scroll
     if s.x != 0 || s.y != 0 {
-        // s.x *= shift
+        // s.x  = 1 * shift
         // s.y *= !shift
         get_parent_of_type(box, .CONTAINER).scroll.vel += [2]f32 { f32(s.x), f32(s.y) } * 15
     }
 
-    if window.dragged_scrollbar != nil {
-        apply_scroll_dragging(window.dragged_scrollbar)
-    }
-}// }}}
+    if window.dragged_scrollbar != nil { apply_scroll_dragging(window.dragged_scrollbar) }
+} // }}}
 
 apply_scroll_velocity :: proc(box: ^Box) {// {{{
     box.scroll.pos += { i32(box.scroll.vel.x), -i32(box.scroll.vel.y) }
@@ -106,11 +120,34 @@ search_click_handler :: proc(target: ^Box) {// {{{
         boxes: [SearchMethod] Box
         for method in SearchMethod {
             boxes[method] = { 
-                text = eat(reflect.enum_name_from_value(method)), 
-                userdata = transmute(rawptr) u64(method) 
-            }
+                text     = eat(reflect.enum_name_from_value(method)), 
+                userdata = transmute(rawptr) u64(method), 
+                click    = proc(item: ^Box) {
+                    item.target.method = auto_cast (transmute(u64) item.userdata)
+                    fmt.println("SEARCH METHOD:", item.target.method)
+                }
         }
-        make_context_menu(target, (cast ([^]Box) &boxes)[:len(SearchMethod)])
+        }
+        make_context_menu(target, (cast([^] Box) &boxes)[:len(boxes)])
+    }
+}// }}}
+
+codeblock_click_handler :: proc(target: ^Box) {// {{{
+    if window.events.click == .RIGHT {
+        boxes: [2] Box = {
+            {
+                text = "copy",
+                click = proc(item: ^Box) { copy(item.target.text) },
+            },
+            {
+                text = "open in editor", 
+                click = proc(item: ^Box) {
+                    view_in_editor(item.target.entity)
+                }
+            },
+        }
+        make_context_menu(target, (cast([^] Box) &boxes)[:len(boxes)])
+    
     }
 }// }}}
 
@@ -123,43 +160,6 @@ tab_click_handler :: proc(target: ^Box) {// {{{
         }
     }
     fmt.println("Did not find tab. Failed to set current tab in tab_click_handler") // VERY TODO
-}// }}}
-
-handle_keypress :: proc(base_event: sdl.Event) {// {{{
-    event: sdl.Keysym = base_event.key.keysym
-    
-    is_lowercase := event.mod & { .RSHIFT, .LSHIFT, .CAPS } == { }
-
-    ctrl  := .LCTRL  in event.mod
-    shift := .LSHIFT in event.mod
-
-    // be sure to `return` in the switch to stop 
-    // a key event from going the active search
-    #partial switch event.sym {
-        case .ESCAPE:
-            if window.active_input != nil {
-                window.active_input.select = window.active_input.cursor
-            }
-            window.active_input = nil
-            return
-        case .s:
-            if ctrl && is_lowercase {
-                window.active_input = get_first_child_of_type(window.boxes.toolbar, .TEXT_INPUT)
-                return
-            }
-        case .w:
-            if ctrl {
-                close_tab(window.current_tab)
-                return
-            }
-        
-
-        case:
-    }
-
-    if window.active_input != nil {
-        handle_keyboard_in_text_input(window.active_input, base_event)          
-    }
 }// }}}
 
 nexus_submit_handler :: proc(target: ^Box) {// {{{
@@ -275,6 +275,10 @@ search_submit_handler :: proc(search: ^Box) {// {{{
 
     template := Box { 
         font  = .MONO,
+        padding = { 0, 1 },
+        margin  = { 0, -2 },
+        active_color  = .BG3,
+        hovered_color = .BG3,
         click = search_result_click_handler,
     }
 
@@ -297,6 +301,7 @@ search_submit_handler :: proc(search: ^Box) {// {{{
 
         template.font = .MONO 
         box := append_box(result_box, template, { text = entity.name })
+        append(&tab.search, box)
     }
 
     if window.boxes.navbar.cached_size == CONFIG_SEARCH_PANEL_CLOSED {
@@ -311,15 +316,40 @@ search_result_click_handler :: proc(target: ^Box) {// {{{
     if !ok do return
 
     scroll_to(window.boxes.content, anchor)
+
+    tab.search[tab.search_cursor].background = .TRANSPARENT
+    for child, i in tab.search {
+        if child.text == target.text do tab.search_cursor = i
+    }
+    tab.search[tab.search_cursor].background = tab.search[tab.search_cursor].active_color   
 }// }}}
 
-handle_keyboard_in_text_input :: proc(search: ^Box, base_event: sdl.Event) {// {{{
+handle_keypress :: proc(base_event: Event) {// {{{
+    if base_event.type != .KEYDOWN && base_event.type != .TEXTINPUT { return }
+
+    event: sdl.Keysym = base_event.key.keysym
+    
+    mods: bit_set [KeyMod]
+    if event.mod & { .LCTRL, .RCTRL }   != {} do mods += { .CTRL  }
+    if event.mod & { .LSHIFT, .RSHIFT } != {} do mods += { .SHIFT } 
+    if event.mod & { .LALT, .RALT }     != {} do mods += { .ALT   }
+    if event.mod & { .LGUI, .RGUI }     != {} do mods += { .SUPER } 
+
+
+    for keybind in KEYBINDS {
+        if keybind.key  == event.sym && keybind.mods == mods {
+            keybind.func()
+            return
+        } 
+    }
+
+    if window.active_input != nil {
+        handle_keyboard_in_text_input(window.active_input, base_event)          
+    }
+}// }}}
+
+handle_keyboard_in_text_input :: proc(search: ^Box, base_event: Event) {// {{{
     using search
-
-    // if base_event.type == .MOUSE_OR_WHATEVER {
-    //     return
-    // }
-
 
     // ============================== ACTUAL TYPING ===============================
 
@@ -358,7 +388,7 @@ handle_keyboard_in_text_input :: proc(search: ^Box, base_event: sdl.Event) {// {
     // ported from another one of my tools
     #partial switch event.sym {
     case .RETURN:
-        search.submit(search)
+        if search.submit != nil do search.submit(search)
         return
 
     case .BACKSPACE, .KP_BACKSPACE:
@@ -520,7 +550,4 @@ handle_keyboard_in_text_input :: proc(search: ^Box, base_event: sdl.Event) {// {
     }
 
 }// }}}
-
-
-
 

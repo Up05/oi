@@ -55,7 +55,7 @@ format_code_block :: proc(entity: ^docl.Entity) -> string {
     tokenizer: odin.Tokenizer
     odin.init(&tokenizer, body, "") // TODO CHECK WHAT IS THE DEFAULT_ERROR_HANDLER!!!
     
-    result_allocator := context.temp_allocator when CONFIG_SET_THE_CHILDREN_STRAIGHT else window.boxes.content.allocator
+    result_allocator := context.temp_allocator when CONFIG_SET_CHILDREN_STRAIGHT else window.boxes.content.allocator
 
     result, err1 := strings.builder_make_len_cap(0, int(f64(len(body)) * 1.5), result_allocator)
     assert(err1 == .None)
@@ -125,7 +125,7 @@ format_code_block :: proc(entity: ^docl.Entity) -> string {
 
         }
         
-        when CONFIG_SET_THE_CHILDREN_STRAIGHT {
+        when CONFIG_SET_CHILDREN_STRAIGHT {
             result2, err2 := strings.builder_make_len_cap(0, len(result.buf) * 2, window.boxes.content.allocator)
             assert(err2 == .None)
             
@@ -235,14 +235,15 @@ find_color :: proc(token: odin.Token) -> Palette {
     // bg := COLORS[box.background]
     // sdl.SetSurfaceBlendMode(main, .BLEND) // so I don't blend the textures twice
 render_code_block :: proc(box: ^Box) {
-    text :: ttf.RenderUTF8_Blended
+    the_text, the_text_size := render_text(box.text, box.font, .DBG)
+    if box.min_size == box.tex_size { box.min_size = the_text_size }
+    box.tex_size = the_text_size
 
-    box.tex = sdl.CreateTexture(window.renderer, .ARGB8888, .TARGET, box.tex_size.x, box.tex_size.y)
+    box.tex = sdl.CreateTexture(window.renderer, .ARGB8888, .TARGET, the_text_size.x, the_text_size.y)
     handle_premultiplied_alpha_compositing(box.tex)
     sdl.SetRenderTarget(window.renderer, box.tex)
     defer sdl.SetRenderTarget(window.renderer, nil)
 
-    the_text, the_text_size := render_text(box.text, box.font, .DBG)
     full_rect := sdl.Rect { 0, 0, the_text_size.x, the_text_size.y }
     sdl.RenderCopy(window.renderer, the_text, &full_rect, &full_rect)
 
@@ -283,7 +284,7 @@ render_code_block :: proc(box: ^Box) {
 
         hl := COLORS[find_color(token)]
         sdl.SetRenderDrawBlendMode(window.renderer, .MOD)
-        draw_rectangle(pos + 1, sub_size - 2, find_color(token))
+        draw_rectangle(pos + { 0, 1 }, sub_size -  { 0, 2 }, find_color(token))
         sdl.SetRenderDrawBlendMode(window.renderer, .BLEND)
 
         if target, ok := current_tab().everything.initial_package.entities[token.text]; ok {
@@ -308,8 +309,4 @@ render_code_block :: proc(box: ^Box) {
     }
 
     box.links    = link_list[:]
-    // box.tex      = sdl.CreateTextureFromSurface(window.renderer, main)
-    // box.tex_size = { main.w, main.h }
-    // box.old_size = box.tex_size
-    // sdl.FreeSurface(main)
 }

@@ -10,14 +10,17 @@ Everything :: docl.Everything
 Vector      :: [2] i32
 MouseButton :: enum { NONE, LEFT, MIDDLE, RIGHT }
 
+KeyMod :: enum {
+    CTRL, SHIFT, ALT, SUPER,
+}
+
 SearchMethod :: enum {
     CONTAINS,               // default
     STRICT, PREFIX, SUFFIX,
     // TODO later replace with substring fuzzy matching, like: 
     // https://en.wikipedia.org/wiki/Damerau%E2%80%93Levenshtein_distance#Optimal_string_alignment_distance
     FUZZY1, FUZZY2, FUZZY4, // 1, 2 and 4 are the string "distances" in levelshtein algorithm
-    REGEX, DOTSTAR,         // dotstar is strings.contains + regex's '.*' 
-    // TODO SYNONYMS,       // synonyms WOULD probably use some synonyms graph for stuff
+    REGEX, DOTSTAR,         // dotstar is strings.contains + regex's '.*' only
 }
 
 Palette :: enum {
@@ -130,19 +133,25 @@ Box :: struct {
         offsets : [] int,           // rune x offsets in pixels, by byte (NOT RUNE)
     },
 
-    format_code : bool,    // for code blocks 
+    format_code : bool,         // for code blocks 
     entity      : ^Entity,
-    links  : [] HyperLink, 
+    links       : [] HyperLink, 
 
-    method : SearchMethod, // for search text inputs
+    method      : SearchMethod, // for search text inputs
+    ghost_text  : string,
+    suggestions : ^[] string,
+    ghost_tex   : Texture,
+    ghost_size  : Vector,
+    top_results : [10] string,
+    curr_result : int,
 
-    progress : ^[2] int,   // progress bar info
+    progress    : ^[2] int,     // progress bar info
+
+    target        : ^Box,       // context menu parent box
+    userdata      : rawptr,
 
     hidden : bool,
     folded : bool,
-
-    target        : ^Box,   // used in context menu parent boxes
-    userdata      : rawptr,
 
     box_queue     : ^[dynamic] ^Box, // only potentially there
     cached_pos    : Vector,
@@ -164,6 +173,7 @@ Tab :: struct {
     cache_queue   : [dynamic] ^Box,
     search        : [dynamic] ^Box,     // search results for the tab
 
+    search_cursor : int,
     search_scroll : Scroll,
 
     everything    : Everything,
@@ -184,6 +194,7 @@ window : struct {
     pressed : MouseButton, 
 
     events  : struct {
+        base   : Event,
         scroll : Vector,
         click  : MouseButton,
     },
@@ -204,6 +215,8 @@ window : struct {
         content : ^Box,
         navbar  : ^Box,
         popup   : ^Box,
+        search  : ^Box,
+        address : ^Box,
     },
 
     // boxes that are waiting for a texture
@@ -221,9 +234,11 @@ window : struct {
 
 
 debug : struct {
-    box_count: int,
-    box_drawn: int,
-    box_placed: int,
+    show: bool,
+
+    box_count  : int,
+    box_drawn  : int,
+    box_placed : int,
 }
 
 FONTS: [FontType] Font
