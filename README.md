@@ -102,3 +102,9 @@ event     - event handling procedures
 2. unalign my code intentionally or remove leading whitespace via tool
 3. add unnecessary things to main.odin
 4. (to younger me) split up the `Box` mega struct to save <200kb
+
+# Thanks to
+
+[Smilex for MacOS fixes](https://github.com/Smilex/oi)
+
+
