@@ -90,7 +90,7 @@ just_kinda_deal_with_sdl_dlls :: proc() -> bool {
                 tried_auto = true
 
                 join :: filepath.join
-                sdl, _ := join({ get_odin_root(), "vendor/sdl2" }, alloc)
+                sdl, _ := join({ get_odin_root(), "vendor\\sdl2" }, alloc)
                 exe := exe_path
                 fmt.println(missing_libs)
                 if .SDL in missing_libs {
@@ -101,14 +101,14 @@ just_kinda_deal_with_sdl_dlls :: proc() -> bool {
                     else do errors[.SDL] = fmt.aprint(err, allocator = alloc)
                 }
                 if .SDL_TTF in missing_libs {
-                    src, _ := join({ sdl, "ttf/SDL2_ttf.dll" }, alloc)
+                    src, _ := join({ sdl, "ttf\\SDL2_ttf.dll" }, alloc)
                     dst, _ := join({ exe, "SDL2_ttf.dll" }, alloc)
                     err := os.copy_file(dst, src)
                     if err == nil do success += { .SDL_TTF }
                     else do errors[.SDL_TTF] = fmt.aprint(err, allocator = alloc)
                 }
                 if .SDL_IMAGE in missing_libs {
-                    src, _ := join({ sdl, "image/SDL2_image.dll" }, alloc)
+                    src, _ := join({ sdl, "image\\SDL2_image.dll" }, alloc)
                     dst, _ := join({ exe, "SDL2_image.dll" }, alloc)
                     err := os.copy_file(dst, src)
                     if err == nil do success += { .SDL_IMAGE }
@@ -141,7 +141,7 @@ just_kinda_deal_with_sdl_dlls :: proc() -> bool {
             }
         }
 
-        rulti.DrawTextBasic("(You may select text with the mouse and use Ctrl + C to copy it)", { 8, window_size.y - 28 })
+        rulti.DrawTextBasic("(By the way, you can select and copy text here)", { 8, window_size.y - 28 })
 
         rl.EndDrawing()
     }
