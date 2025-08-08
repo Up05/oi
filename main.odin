@@ -113,9 +113,10 @@ CACHE_DIRECTORIES: [] string : {
 main :: proc() {
     permanent = make_arena()
     start_main_thread_pool()
-    init_graphics()
 
+    if !init_graphics() do return
     if !is_cache_ok() { recache() }
+
     setup_base_ui()
 
     for !window.should_exit {

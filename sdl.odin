@@ -43,7 +43,13 @@ EMBEDDED_FONTS: [] [] byte = {
     #load("font-monospace.ttf")
 }
 
-init_graphics :: proc() {
+init_graphics :: proc() -> bool {
+
+    when ODIN_OS == .Windows { 
+        if !just_kinda_deal_with_sdl_dlls() {
+            return false
+        }
+    }
 
     assert( sdl.Init(sdl.INIT_VIDEO) >= 0, "Failed to initialize SDL!" )
     assert( sdl.CreateWindowAndRenderer(1280, 720, { .RESIZABLE, .SHOWN, .OPENGL if ODIN_OS != .Darwin else .METAL }, 
@@ -59,6 +65,8 @@ init_graphics :: proc() {
     sdl.SetWindowMinimumSize(window.handle, 600, 200)
 
     setup_window_icon()
+
+    return true
 }
 
 poll_events :: proc() {

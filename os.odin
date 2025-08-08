@@ -9,33 +9,6 @@ import "core:path/filepath"
 
 File_Info :: os.File_Info
 
-get_odin_root :: proc() -> string {
-
-    @static cached_odin_root: string
-
-    if path, ok := os.lookup_env("ODIN_ROOT", context.temp_allocator); ok {
-        if path != cached_odin_root {
-            cached_odin_root = strings.clone(path, permanent) // "average memeory leak"
-        }
-        return cached_odin_root
-    }
-    
-    proccess: os.Process_Desc
-    proccess.command = { "odin", "root" }
-    state, stdout, stderr, err := os.process_exec(proccess, context.temp_allocator) // pausing here sucks a little bit, but it should be fine...
-    if err != nil {
-        fmt.println("command 'odin root' failed, is the odin compiler in your PATH?")
-    }
-
-    path := string(stdout)
-    if path != cached_odin_root {
-        cached_odin_root = strings.clone(path, permanent)
-    }
-
-    return cached_odin_root
-}
-
-
 execute_command :: proc(command: ..string) -> (ok: bool) {
     if len(command) == 0 do return false
     process: os.Process_Desc
@@ -111,9 +84,7 @@ cache_everything :: proc(progress: ^[2] int, finished: ^[dynamic] string) {
         }
     }
 
-    exe_path, err1  := os.get_executable_directory(context.allocator)
-    err2 := os.set_working_directory(exe_path)
-    assert(err1 == nil && err2 == nil)
+    set_correct_cwd()
 
     odin_root := get_odin_root()
 
@@ -130,12 +101,47 @@ cache_everything :: proc(progress: ^[2] int, finished: ^[dynamic] string) {
 }
 
 is_cache_ok :: proc() -> bool {
-    exe_path, err1  := os.get_executable_directory(context.allocator)
-    err2 := os.set_working_directory(exe_path)
-    assert(err1 == nil && err2 == nil)
+    set_correct_cwd()
 
     if !os.is_directory("cache") do return false
     if files, ok := list_dir("cache"); len(files) == 0 || !ok do return false
 
     return true
 }
+
+set_correct_cwd :: proc() {
+    @static already_set: bool
+    if already_set do return
+
+    exe_path, err1  := os.get_executable_directory(context.allocator)
+    err2 := os.set_working_directory(exe_path)
+    assert(err1 == nil && err2 == nil)
+    already_set = true
+}
+
+get_odin_root :: proc() -> string {
+
+    @static cached_odin_root: string
+
+    if path, ok := os.lookup_env("ODIN_ROOT", context.temp_allocator); ok {
+        if path != cached_odin_root {
+            cached_odin_root = strings.clone(path, permanent) // "average memeory leak"
+        }
+        return cached_odin_root
+    }
+    
+    proccess: os.Process_Desc
+    proccess.command = { "odin", "root" }
+    state, stdout, stderr, err := os.process_exec(proccess, context.temp_allocator) // pausing here sucks a little bit, but it should be fine...
+    if err != nil {
+        fmt.println("command 'odin root' failed, is the odin compiler in your PATH?")
+    }
+
+    path := string(stdout)
+    if path != cached_odin_root {
+        cached_odin_root = strings.clone(path, permanent)
+    }
+
+    return cached_odin_root
+}
+
