@@ -39,8 +39,8 @@ just_kinda_deal_with_sdl_dlls :: proc() -> bool {
     text: strings.Builder
     write(&text, "Unfortunately... You are missing some .dll files:")
     if .SDL       in missing_libs { write(&text, " - SDL (base SDL.dll library)") }
-    if .SDL_TTF   in missing_libs { write(&text, " - SDL_ttf (base SDL_ttf.dll library") }
-    if .SDL_IMAGE in missing_libs { write(&text, " - SDL_image (base SDL_image.dll library)") }
+    if .SDL_TTF   in missing_libs { write(&text, " - SDL_ttf (SDL_ttf.dll font loading library") }
+    if .SDL_IMAGE in missing_libs { write(&text, " - SDL_image (SDL_image.dll image loading library)") }
     write(&text, "")
 
     exe_path, _ := os.get_executable_directory(alloc)
