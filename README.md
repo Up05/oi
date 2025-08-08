@@ -20,7 +20,7 @@ And now:
 
 # Installation
 
-The environment variable `ODIN_ROOT` is necessary (also needed by odin compiler)
+Careful with SDL... I haven't yet tried to link it statically and on Windows, I guess, you need dlls next to executable...
 The Odin compiler has to be in your `PATH` to generate the `oi.exe directory/cache`
 
 ```

@@ -212,6 +212,8 @@ recache :: proc() {// {{{
     delete(messages)
     // clear(&done_packages)
     // delete(done_packages)
+
+    progress_metrics.the_recaching = {}
 }// }}}
 
 setup_window_icon :: proc() {

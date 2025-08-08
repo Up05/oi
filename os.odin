@@ -9,6 +9,33 @@ import "core:path/filepath"
 
 File_Info :: os.File_Info
 
+get_odin_root :: proc() -> string {
+
+    @static cached_odin_root: string
+
+    if path, ok := os.lookup_env("ODIN_ROOT", context.temp_allocator); ok {
+        if path != cached_odin_root {
+            cached_odin_root = strings.clone(path, permanent) // "average memeory leak"
+        }
+        return cached_odin_root
+    }
+    
+    proccess: os.Process_Desc
+    proccess.command = { "odin", "root" }
+    state, stdout, stderr, err := os.process_exec(proccess, context.temp_allocator) // pausing here sucks a little bit, but it should be fine...
+    if err != nil {
+        fmt.println("command 'odin root' failed, is the odin compiler in your PATH?")
+    }
+
+    path := string(stdout)
+    if path != cached_odin_root {
+        cached_odin_root = strings.clone(path, permanent)
+    }
+
+    return cached_odin_root
+}
+
+
 execute_command :: proc(command: ..string) -> (ok: bool) {
     if len(command) == 0 do return false
     process: os.Process_Desc
@@ -88,7 +115,7 @@ cache_everything :: proc(progress: ^[2] int, finished: ^[dynamic] string) {
     err2 := os.set_working_directory(exe_path)
     assert(err1 == nil && err2 == nil)
 
-    odin_root := os.get_env("ODIN_ROOT", context.temp_allocator)
+    odin_root := get_odin_root()
 
     os.remove_all("cache")
     os.make_directory("cache")

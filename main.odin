@@ -104,7 +104,7 @@ KEYBINDS := [] Bind {
 }
 
 // fullpaths are valid
-// plus, could just add libs to $ODIN_ROOT/user
+// plus, could just add libs to $ODIN_ROOT/user (or dir(odin.exe)/user)
 CACHE_DIRECTORIES: [] string : {
     "base", "core", "vendor", "user", "/home/ulti/src/oi"
 }
