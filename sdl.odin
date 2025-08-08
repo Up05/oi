@@ -15,7 +15,9 @@ Event     ::  sdl.Event
 Color     ::  sdl.Color
 Key       ::  sdl.Keycode
 
-destroy_texture :: sdl.DestroyTexture
+start_text_input :: sdl.StartTextInput
+stop_text_input  :: sdl.StopTextInput
+destroy_texture  :: sdl.DestroyTexture
 
 // =======================================================================================
 // ================================ WINDOW SETUP & RESIZE ================================
@@ -44,7 +46,7 @@ EMBEDDED_FONTS: [] [] byte = {
 init_graphics :: proc() {
 
     assert( sdl.Init(sdl.INIT_VIDEO) >= 0, "Failed to initialize SDL!" )
-    assert( sdl.CreateWindowAndRenderer(1280, 720, { .RESIZABLE } | { sdl.WindowFlag.OPENGL } if ODIN_OS != .Darwin else {}, 
+    assert( sdl.CreateWindowAndRenderer(1280, 720, { .RESIZABLE, .OPENGL if ODIN_OS != .Darwin else .METAL }, 
             &window.handle, &window.renderer) >= 0, "Failed to start program!" )
     assert( ttf.Init() >= 0, "Failed to get True Type Font support" )
 

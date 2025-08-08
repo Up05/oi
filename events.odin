@@ -326,7 +326,11 @@ search_result_click_handler :: proc(target: ^Box) {// {{{
 }// }}}
 
 handle_keypress :: proc(base_event: Event) {// {{{
-    if base_event.type != .KEYDOWN && base_event.type != .TEXTINPUT { return }
+    is_relevant_event: bool
+    is_relevant_event ||= base_event.type == (.KEYDOWN if ODIN_OS != .Darwin else .KEYUP)
+    is_relevant_event ||= base_event.type == .TEXTINPUT
+    is_relevant_event ||= base_event.type == .TEXTEDITING
+    if !is_relevant_event { return }
 
     event: sdl.Keysym = base_event.key.keysym
     
@@ -345,8 +349,9 @@ handle_keypress :: proc(base_event: Event) {// {{{
     }
 
     if window.active_input != nil {
-        handle_keyboard_in_text_input(window.active_input, base_event)          
+        handle_keyboard_in_text_input(window.active_input, base_event) 
     }
+
 }// }}}
 
 handle_keyboard_in_text_input :: proc(search: ^Box, base_event: Event) {// {{{
@@ -369,7 +374,6 @@ handle_keyboard_in_text_input :: proc(search: ^Box, base_event: Event) {// {{{
         search.select += len(new_text)
         update_text_input(search)
 
-        return 
         // pressing e.g.: 'a' fires 2 events
         // this return stops only the .TEXTINPUT
         // but .KEYDOWN with 'a' still passes: 

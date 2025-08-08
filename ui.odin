@@ -638,7 +638,12 @@ draw_box :: proc(box: ^Box, scroll_amount: Vector) {// {{{
 
 }// }}}
 
+prev_frame_active_search: ^Box
 draw_window :: proc() {// {{{
+    defer prev_frame_active_search = window.active_input 
+    if window.active_input != nil && prev_frame_active_search == nil { start_text_input() }
+    if window.active_input == nil && prev_frame_active_search != nil { stop_text_input() }
+
     draw_rectangle({}, window.size, .BAD)
 
     for box in window.root.children {
