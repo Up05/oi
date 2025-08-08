@@ -1,20 +1,22 @@
 # Oi!
 
 oi (odin index) is a documentation viewer for the Odin programming language.
+
+https://github.com/user-attachments/assets/8f393445-5f31-46b0-8dfc-c47625bbd544
  
-It is an alternative to the pkg.odin-lang.org website, that I started, because:
+It is an alternative to the [pkg.odin-lang.org](https://pkg.odin-lang.org) website, that I started, because:
 1. The site was too slow on my laptop :(. 
 2. I dislike the fuzzy, scattered matching
-3. I eventually found myself just typing out the entire: `pkg.odin-lang.org/core/strings` to go to the `strings` package 
+3. I eventually found myself just typing out the entire:  
+   `pkg.odin-lang.org/core/strings` to go to `strings`... 
 4. also there still is no os/os2 there.
 
 And now:
 1. Well, I went outside and my kernel borked, but I do use SDL with heavy culling of UI elements (and lazy text rendering)
 2. There are a bunch of search methods, (default: "dotstar" -- `strings.contains` + only '.\*' from regex)
-3. Ctrl + T to open packages (almost all packages have unique names after 3-4 letters, so why bother typing "core/")
+3. `Ctrl + T` to open packages (almost all packages have unique names after 3-4 letters, so why bother typing "core/")
 4. base:intrinsics and base:builtin were (for now) traded in for os2 and user libraries (just enter their path)
-5. Source can be viewed directly in the user's editor (instead of Github) by pressing Ctrl + G (or in right click menu)
-
+5. Source can be viewed directly in the user's editor (instead of Github) by pressing `Ctrl + G` (or in right click menu)
 
 # Installation
 
@@ -48,7 +50,7 @@ All boxes are children of `window.root`, but (generally) you will want to append
 Boxes are layed out automatically, although, after editing them, be sure to set `window.should_relayout` to `true`!
 
 The function to append new boxes is:
-```
+```odin
 append_box( parent, ..templates )
 
 // example:
