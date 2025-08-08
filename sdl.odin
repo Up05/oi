@@ -49,6 +49,7 @@ init_graphics :: proc() {
     assert( sdl.CreateWindowAndRenderer(1280, 720, { .RESIZABLE, .SHOWN, .OPENGL if ODIN_OS != .Darwin else .METAL }, 
             &window.handle, &window.renderer) >= 0, "Failed to start program!" )
     assert( ttf.Init() >= 0, "Failed to get True Type Font support" )
+    sdl.SetWindowTitle(window.handle, "oi")
 
     FONTS[.REGULAR] = load_font(0, CONFIG_FONT_SIZE)
     FONTS[.MONO]    = load_font(1, CONFIG_FONT_SIZE)
