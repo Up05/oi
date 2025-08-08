@@ -12,7 +12,9 @@ MouseEvent :: proc(target: ^Box)
 InputEvent :: proc(target: ^Box)
 
 emit_events :: proc() {// {{{
-    handle_keypress(window.events.base)
+    when ODIN_OS != .Darwin {
+        handle_keypress(window.events.base)
+    }
 
     box := window.hovered
     defer window.hovered = nil
@@ -348,8 +350,10 @@ handle_keypress :: proc(base_event: Event) {// {{{
         } 
     }
 
-    if window.active_input != nil {
-        handle_keyboard_in_text_input(window.active_input, base_event) 
+    when ODIN_OS != .Darwin {
+        if window.active_input != nil {
+            handle_keyboard_in_text_input(window.active_input, base_event) 
+        }
     }
 
 }// }}}

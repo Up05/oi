@@ -46,7 +46,7 @@ EMBEDDED_FONTS: [] [] byte = {
 init_graphics :: proc() {
 
     assert( sdl.Init(sdl.INIT_VIDEO) >= 0, "Failed to initialize SDL!" )
-    assert( sdl.CreateWindowAndRenderer(1280, 720, { .RESIZABLE, .OPENGL if ODIN_OS != .Darwin else .METAL }, 
+    assert( sdl.CreateWindowAndRenderer(1280, 720, { .RESIZABLE, .SHOWN, .OPENGL if ODIN_OS != .Darwin else .METAL }, 
             &window.handle, &window.renderer) >= 0, "Failed to start program!" )
     assert( ttf.Init() >= 0, "Failed to get True Type Font support" )
 
@@ -74,6 +74,13 @@ poll_events :: proc() {
             window.pressed      = auto_cast event.button.button
         case .MOUSEBUTTONUP:
             window.pressed = .NONE
+        case .KEYDOWN, .TEXTINPUT:
+            when ODIN_OS == .Darwin {
+                handle_keypress(event)
+                if window.active_input != nil {
+                    handle_keyboard_in_text_input(window.active_input, event)          
+                }
+            }
         case: 
         }
     }
@@ -84,8 +91,19 @@ poll_events :: proc() {
 }
 
 begin_frame :: proc() {
+    window_w, window_h: i32
+    drawable_w, drawable_h: i32
+
+    sdl.GetWindowSize(window.handle, &window_w, &window_h)
+    sdl.GL_GetDrawableSize(window.handle, &drawable_w, &drawable_h)
+
+    scale_x := f32(drawable_w) / f32(window_w)
+    scale_y := f32(drawable_h) / f32(window_h)
+
     sdl.SetRenderDrawColor(window.renderer, 0, 0, 0, 255)
+    sdl.RenderSetScale(window.renderer, scale_x, scale_y)
     sdl.RenderClear(window.renderer)
+
     frame_start_time = tick_now()
     window.onframe = true
 }
@@ -107,7 +125,7 @@ end_frame :: proc() {
 
 handle_resize :: proc() {
     prev_size := window.size
-    sdl.GetWindowSize(window.handle, &window.size.x, &window.size.y)
+    sdl.GetRendererOutputSize(window.renderer, &window.size.x, &window.size.y)
 
     delta_size := prev_size - window.size
     if math.abs(delta_size.x) > 2 || math.abs(delta_size.y) > 2 {
