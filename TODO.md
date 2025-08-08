@@ -1,6 +1,5 @@
 # TODO 
 
-+ test with newer odin versions
 + switching and closing tabs is janky (whenever not observed)
 + draw mixed code/docs (for package docs, see: `small_array`)
 + test on my laptop (i hate my life)
