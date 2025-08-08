@@ -44,7 +44,7 @@ EMBEDDED_FONTS: [] [] byte = {
 init_graphics :: proc() {
 
     assert( sdl.Init(sdl.INIT_VIDEO) >= 0, "Failed to initialize SDL!" )
-    assert( sdl.CreateWindowAndRenderer(1280, 720, { sdl.WindowFlag.RESIZABLE, sdl.WindowFlag.OPENGL }, 
+    assert( sdl.CreateWindowAndRenderer(1280, 720, { .RESIZABLE } | { sdl.WindowFlag.OPENGL } if ODIN_OS != .Darwin else {}, 
             &window.handle, &window.renderer) >= 0, "Failed to start program!" )
     assert( ttf.Init() >= 0, "Failed to get True Type Font support" )
 
