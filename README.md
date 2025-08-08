@@ -9,11 +9,11 @@ It is an alternative to the [pkg.odin-lang.org](https://pkg.odin-lang.org) websi
 2. I dislike the fuzzy, scattered matching
 3. I eventually found myself just typing out the entire:  
    `pkg.odin-lang.org/core/strings` to go to `strings`... 
-4. also there still is no os/os2 there.
+4. also there still is no os/os2 there and I can never find where laytan's HTTP library docs are...
 
 And now:
 1. Well, I went outside and my kernel borked, but I do use SDL with heavy culling of UI elements (and lazy text rendering)
-2. There are a bunch of search methods, (default: "dotstar" -- `strings.contains` + only '.\*' from regex)
+2. There are a bunch of search methods, (default: "dotstar" -- `strings.contains` + only `.*` from regex)
 3. `Ctrl + T` to open packages (almost all packages have unique names after 3-4 letters, so why bother typing "core/")
 4. base:intrinsics and base:builtin were (for now) traded in for os2 and user libraries (just enter their path)
 5. Source can be viewed directly in the user's editor (instead of Github) by pressing `Ctrl + G` (or in right click menu)
