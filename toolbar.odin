@@ -1,7 +1,5 @@
 package main
 
-import "core:fmt"
-
 current_tab :: proc() -> ^Tab {
     if len(window.tabs) <= window.current_tab do return nil
     return &window.tabs[window.current_tab]

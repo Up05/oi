@@ -1,9 +1,7 @@
 package main
 
-import "core:fmt"
 import "core:strings"
 import "core:unicode/utf8"
-import "core:thread"
 import odin "core:odin/tokenizer"
 import doc "core:odin/doc-format"
 import docl "doc-loader"
@@ -230,10 +228,6 @@ find_color :: proc(token: odin.Token) -> Palette {
 
     return .FG1
 }
-    // main := := sdl.CreateRGBSurfaceWithFormat(0, box.tex_size.x, box.tex_size.y, 32, auto_cast sdl.PixelFormatEnum.ARGB8888)
-    // // sdl.SetColorKey(main, 1, sdl.MapRGB(main.format, 0, 0, 0))
-    // bg := COLORS[box.background]
-    // sdl.SetSurfaceBlendMode(main, .BLEND) // so I don't blend the textures twice
 render_code_block :: proc(box: ^Box) {
     the_text, the_text_size := render_text(box.text, box.font, .DBG)
     if box.min_size == box.tex_size { box.min_size = the_text_size }

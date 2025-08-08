@@ -4,7 +4,6 @@ package main
 import "core:fmt"
 import "core:slice"
 import "core:strings"
-import "core:thread"
 import docl "doc-loader"
 
 Module :: struct {
@@ -187,6 +186,7 @@ open_nexus :: proc(userdata: rawptr) {// {{{
 
 // Kind of a bad place for this...
 setup_sidebar :: proc(parent: ^Box) {// {{{
+    module_name_list = make([dynamic] string, permanent)
 
     // it's not really a search should rename later
     sidebar_search := append_box(window.boxes.sidebar, {
@@ -250,8 +250,8 @@ setup_sidebar :: proc(parent: ^Box) {// {{{
     prev_parent := parent
     prev_levels : int
     for file in file_names {
-        path := cat({ "cache/", file })
-        template.userdata = new_clone(path)
+        path := cat({ "cache/", file }, permanent)
+        template.userdata = new_clone(path, permanent)
 
         file := file
         if strings.ends_with(file, ".odin-doc") { 
@@ -285,7 +285,7 @@ setup_sidebar :: proc(parent: ^Box) {// {{{
             hidden = strings.starts_with(file, "_")
         })
         prev_levels = levels
-        append(&module_name_list, strings.clone(file))
+        append(&module_name_list, strings.clone(file, permanent))
     }
 
 }// }}}

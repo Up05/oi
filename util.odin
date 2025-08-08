@@ -44,12 +44,12 @@ view_in_editor :: proc(entity: ^Entity) {
 }
 
 start_main_thread_pool :: proc() {
-    thread.pool_init(&window.thread_pool, context.allocator, 3) 
+    thread.pool_init(&window.thread_pool, permanent, 3) 
     thread.pool_start(&window.thread_pool)
 }
 
 do_async :: proc(procedure: thread.Task_Proc, data: rawptr = nil) {
-    thread.pool_add_task(&window.thread_pool, context.allocator, procedure, data)
+    thread.pool_add_task(&window.thread_pool, permanent, procedure, data)
 }
 
 // I believe that the most useful feature of Regex is easily the '.*'
@@ -186,5 +186,45 @@ make_arena :: proc() -> Allocator {
     _ = virtual.arena_init_growing(arena)
     return virtual.arena_allocator(arena) 
 }
+
+
+/*
+    // Add to first line of main.odin:main()
+    // for tracking memory leaks
+    // + import core:slice, core:mem and core:fmt
+
+    when ODIN_DEBUG {
+		track: mem.Tracking_Allocator
+		mem.tracking_allocator_init(&track, context.allocator)
+		context.allocator = mem.tracking_allocator(&track)
+
+		defer {
+			if len(track.allocation_map) > 0 {
+                allocations: map[runtime.Source_Code_Location] [2] int
+				for _, entry in track.allocation_map {
+                    value, ok := allocations[entry.location]
+                    if ok {
+                        allocations[entry.location] = { value[0] + entry.size, value[1] + 1 }
+                    } else {
+                        allocations[entry.location] = { entry.size, 1 }
+                    }
+                }
+                
+                records: [dynamic] Record
+				for loc, data in allocations {
+                    append(&records, Record { src = loc, size = data[0], count = data[1] })
+				}
+                slice.sort_by(records[:], proc(a, b: Record) -> bool { return a.size > b.size })
+                
+				fmt.eprintf("=== %v allocations not freed: ===\n", len(track.allocation_map))
+				for record in records {
+					fmt.eprintf("% 6d bytes [% 3d times] \t@ %v\n", record.size, record.count, record.src)
+				}
+			}
+			mem.tracking_allocator_destroy(&track)
+		}
+	}
+
+*/
 
 

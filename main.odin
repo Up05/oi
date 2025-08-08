@@ -1,7 +1,5 @@
 package main
 
-import "core:fmt"
-
 MEASURE_PERFORMANCE          :: false
 
 CONFIG_MAX_FPS               :: 60 
@@ -104,21 +102,18 @@ KEYBINDS := [] Bind {
 }
 
 // fullpaths are valid
-// plus, could add libs to $ODIN_ROOT
+// plus, could just add libs to $ODIN_ROOT/user
 CACHE_DIRECTORIES: [] string : {
-    "base", "core", "vendor", "/home/ulti/src/oi"
+    "base", "core", "vendor", "user", "/home/ulti/src/oi"
 }
 
 
 main :: proc() {
-
+    permanent = make_arena()
     start_main_thread_pool()
-
     init_graphics()
 
-    if !is_cache_ok() { 
-        recache() 
-    }
+    if !is_cache_ok() { recache() }
     setup_base_ui()
 
     for !window.should_exit {
@@ -132,47 +127,10 @@ main :: proc() {
     
         // can, likely, be much more than 25 before FPS drops 
         for i in 0..<10 { pop_box_from_any_queue() }
-        emit_events()
-        
+        emit_events()    
     }
+    
+    free_all(permanent)
 
 }
-
-/*
-    The Big Ideas
-
-    1.  Custom doc format, that would support package aliassing in a way, I can understand,
-        Would not repeat packages per file. Would not give null things on only base packages.
-        Would and would not ...
-
-    2.  MAYBE Remark system (users can submit comments on procedures/types/whatever)
-        But that's annoying to do from the technical side, because security
-        Plus, I'd need to set up, maintain and protect/moderate a server...
- 
-    3.  MAYBE (If I'm allowed to) scrape the original docs of some bindings, e.g.: SDL
- 
-*/
-
-/*
-    "T0DO" Is Yellow (And It's Annoying)
-
-    ! font licensing
-    - draw mixed code/docs (for package docs, see: small_array)
-    - cull package imports
-    - test on my laptop (i hate my life)
-    - horizontal scrolling
-    - maybe nice installation? like File Pilot...
-    - accessibility
-        - does odin have screen reader anything???
-        - using terms when describing types (not, like: "colon color struct curly bracket x color package period type <pause> ..."
-          should be "struct 'that has' x 'of type' package dot type" is that possible? who knows...
-        - keybinds to navigate over boxes.content
-          and activate screen reader (cause fuck man... it must be annoying as hell when it is just always saying shit)
-    - test with newer odin versions
-    - [let someone else] test on windows
-    - is there a problem with search a group of packages?..
-    
-
-    - fix various formatting issues (1st big idea)
-*/
 

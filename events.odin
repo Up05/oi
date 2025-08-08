@@ -9,6 +9,7 @@ import docl "doc-loader"
 import sdl "vendor:sdl2"
 
 MouseEvent :: proc(target: ^Box)
+InputEvent :: proc(target: ^Box)
 
 emit_events :: proc() {// {{{
     handle_keypress(window.events.base)
@@ -159,7 +160,7 @@ tab_click_handler :: proc(target: ^Box) {// {{{
             return
         }
     }
-    fmt.println("Did not find tab. Failed to set current tab in tab_click_handler") // VERY TODO
+    fmt.println("Did not find tab. Failed to set current tab in tab_click_handler")
 }// }}}
 
 nexus_submit_handler :: proc(target: ^Box) {// {{{

@@ -90,7 +90,11 @@ init_box :: proc(box: ^Box, parent: ^Box) {// {{{
 
     // calculating (to-be-rendered) text size
     if len(box.text) > 0 {
-        box.text = strings.clone(box.text, box.allocator) 
+
+        allocation: bool
+        box.text, allocation = strings.replace_all(box.text, "\t", "    ", box.allocator)
+        if !allocation { box.text = strings.clone(box.text, box.allocator) }
+
         // this is ignores new lines and is later replaced,
         // but I guess, it is good to not have 0 tex_size... or smth... 
         // + later can make my own
@@ -205,8 +209,9 @@ clear_box :: proc(box: ^Box, the_chosen := true) {// {{{
 
 setup_base_ui :: proc() {// {{{
     using window.boxes
-
-    window.root.allocator = make_arena()
+    
+    window.box_queue.allocator = permanent
+    window.root.allocator = permanent
 
     content = append_box(&window.root, {
         type     = .CONTAINER,
@@ -235,7 +240,7 @@ setup_base_ui :: proc() {// {{{
         click    = box_collapse_handler,
     })
     
-    window.boxes.popup = new(Box)
+    window.boxes.popup = new(Box, permanent)
     window.boxes.popup^ = template_default_popup()
     append(&window.root.children, window.boxes.popup)
 
@@ -673,6 +678,7 @@ SCROLL: %v/%v`, name,
     append(&texts, fmt.aprintf("BOXES  DRAWN: %d", debug.box_drawn, allocator = context.temp_allocator))
     append(&texts, fmt.aprintf("BOXES LOADED: %d", debug.box_placed, allocator = context.temp_allocator))
     append(&texts, fmt.aprintf("MOUSE: %d %d", window.mouse.x, window.mouse.y, allocator = context.temp_allocator))
+    append(&texts, fmt.aprintf("TAB NUMBER: %d", window.current_tab, allocator = context.temp_allocator))
 
     if window.hovered != nil { append(&texts, box_info("HOVERED BOX", window.hovered)) }
     if window.active_context_menu != nil { append(&texts, box_info("ACTIVE CONTEXT MENU", window.active_context_menu)) }

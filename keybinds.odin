@@ -1,7 +1,5 @@
 package main
 
-import "core:fmt"
-
 Bind :: struct {
     key  : Key,
     mods : bit_set [KeyMod],
@@ -69,7 +67,6 @@ kb_goto_prev_result :: proc() {// {{{
 
 kb_open_code_in_editor :: proc() {// {{{
     box := window.hot_boxes.hovered
-    fmt.println("test", box)
     if box == nil do return
     if box.type != .CODE do return
 

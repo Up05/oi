@@ -1,9 +1,8 @@
 package main
 
-import docl "doc-loader"
 import sdl "vendor:sdl2"
 import "vendor:sdl2/ttf"
-import "core:slice"
+import "vendor:sdl2/image"
 import "core:math"
 import "core:fmt"
 
@@ -37,6 +36,11 @@ take_break :: proc() {
     if breaktime < 1000 do sdl.Delay(breaktime)
 }
 
+EMBEDDED_FONTS: [] [] byte = {
+    #load("font-regular.ttf"),
+    #load("font-monospace.ttf")
+}
+
 init_graphics :: proc() {
 
     assert( sdl.Init(sdl.INIT_VIDEO) >= 0, "Failed to initialize SDL!" )
@@ -44,13 +48,14 @@ init_graphics :: proc() {
             &window.handle, &window.renderer) >= 0, "Failed to start program!" )
     assert( ttf.Init() >= 0, "Failed to get True Type Font support" )
 
-    FONTS[.REGULAR] = ttf.OpenFont("font-regular.ttf",   CONFIG_FONT_SIZE)
-    FONTS[.MONO]    = ttf.OpenFont("font-monospace.ttf", CONFIG_FONT_SIZE)
-    FONTS[.LARGE]   = ttf.OpenFont("font-regular.ttf",   CONFIG_LARGE_FONT_SIZE)
+    FONTS[.REGULAR] = load_font(0, CONFIG_FONT_SIZE)
+    FONTS[.MONO]    = load_font(1, CONFIG_FONT_SIZE)
+    FONTS[.LARGE]   = load_font(0, CONFIG_LARGE_FONT_SIZE)
 
     sdl.SetRenderDrawBlendMode(window.renderer, .BLEND)
     sdl.SetWindowMinimumSize(window.handle, 600, 200)
 
+    setup_window_icon()
 }
 
 poll_events :: proc() {
@@ -111,7 +116,7 @@ handle_resize :: proc() {
 // its a mess, but also, just don't look, i guess
 @(private="file") packages_done: int
 @(private="file") done_packages: [dynamic] string
-recache :: proc() {
+recache :: proc() {// {{{
     
     do_async(proc(task: Task) {
         cache_everything(&progress_metrics.the_recaching, &done_packages)
@@ -187,7 +192,21 @@ recache :: proc() {
     delete(messages)
     // clear(&done_packages)
     // delete(done_packages)
+}// }}}
+
+setup_window_icon :: proc() {
+    icon_data := #load("icon.png")
+    image_data := sdl.RWFromConstMem(raw_data(icon_data), auto_cast len(icon_data))
+    icon := image.Load_RW(image_data, false)
+    sdl.SetWindowIcon(window.handle, icon)
 }
+
+load_font :: proc(font_index: int, size: i32) -> Font {
+    the_font := EMBEDDED_FONTS[font_index]
+    font_data := sdl.RWFromConstMem(raw_data(the_font), auto_cast len(the_font))
+    return ttf.OpenFontRW(font_data, false, size)
+}
+
 
 // }}}
 
