@@ -305,8 +305,8 @@ search_submit_handler :: proc(search: ^Box) {// {{{
         append(&tab.search, box)
     }
 
-    if window.boxes.navbar.cached_size == CONFIG_SEARCH_PANEL_CLOSED {
-        box_toggle_fold_handler(window.boxes.navbar)
+    if window.boxes.navbar.min_size.x == CONFIG_NAVBAR_CLOSED {
+        box_collapse_handler(window.boxes.navbar)
     }
 }// }}}
 

@@ -21,6 +21,11 @@ execute_command :: proc(command: ..string) -> (ok: bool) {
 
     process.command = command
 
+    // fmt.println("command:", command)
+    // state, stdout, stderr, err := os.process_exec(process, permanent)
+    // fmt.println("stdout", string(stdout))
+    // fmt.println("stderr", string(stderr))
+
     handle, err := os.process_start(process)
     if err != nil {
         fmt.println(err)

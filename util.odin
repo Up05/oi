@@ -31,16 +31,21 @@ cat :: strings.concatenate
 
 view_in_editor :: proc(entity: ^Entity) {
     int_to_str :: proc(num: int) -> string { return fmt.aprint(num, allocator = context.temp_allocator) }
+    replace :: proc(a, b, c: string) -> string { 
+        return eat(strings.replace_all(a, b, c, allocator = context.temp_allocator)) 
+    }
+
     pos := entity.pos
 
-    editor_command := EDITOR_COMMAND
-    parameters, _ := strings.replace(
-        editor_command[1], "{FILE}", pos.file.path, 1, allocator = context.temp_allocator)
-    parameters, _  = strings.replace(
-        parameters, "{LINE}", int_to_str(pos.line), 1, allocator = context.temp_allocator)
+    the_file := pos.file.path
+    the_line := int_to_str(pos.line)
+    
+    expanded_params := make([] string, len(EDITOR_COMMAND), context.temp_allocator)
+    for param, i in EDITOR_COMMAND {
+        expanded_params[i] = replace(replace(param, "{FILE}", the_file), "{LINE}", the_line)
+    }
 
-    ok := execute_command(editor_command[0], parameters)
-    if !ok do fmt.println("Failed to start process: ", editor_command[0], parameters)
+    execute_command(..expanded_params)
 }
 
 start_main_thread_pool :: proc() {

@@ -39,11 +39,11 @@ kb_goto_next_result :: proc() {// {{{
     anchor, ok := tab.box_table[target.text]
     if ok { scroll_to(window.boxes.content, anchor) }
 
+    for box in tab.search { box.background = .TRANSPARENT }
+    target.background = target.active_color   
+
     tab.search_cursor += 1
     tab.search_cursor = max(tab.search_cursor, 0) % len(tab.search)
-
-    target.background = .TRANSPARENT
-    tab.search[tab.search_cursor].background = tab.search[tab.search_cursor].active_color   
 }// }}}
 
 kb_goto_prev_result :: proc() {// {{{
@@ -54,15 +54,17 @@ kb_goto_prev_result :: proc() {// {{{
     if tab.search[tab.search_cursor].font == .LARGE do tab.search_cursor -= 1
     if tab.search_cursor < 0 do tab.search_cursor = len(tab.search) - 1
 
+
     target := tab.search[tab.search_cursor]
     anchor, ok := tab.box_table[target.text]
     if ok { scroll_to(window.boxes.content, anchor) }
 
+    for box in tab.search { box.background = .TRANSPARENT }
+    target.background = target.active_color   
+
     tab.search_cursor -= 1
     if tab.search_cursor < 0 do tab.search_cursor = len(tab.search) - 1
 
-    target.background = .TRANSPARENT
-    tab.search[tab.search_cursor].background = tab.search[tab.search_cursor].active_color   
 }// }}}
 
 kb_open_code_in_editor :: proc() {// {{{

@@ -226,14 +226,15 @@ setup_base_ui :: proc() {// {{{
     })
     sidebar = append_box(&window.root, { 
         type     = .CONTAINER,
-        min_size = { 300, 0 }, 
+        min_size = { CONFIG_SIDEBAR_OPEN, 0 }, 
         design   = { background = .BG2 },
         border   = true,
         click    = box_collapse_handler,
     })
     navbar  = append_box(&window.root, { 
         type     = .CONTAINER,
-        min_size = { 200, 0 },  
+        min_size = { CONFIG_NAVBAR_CLOSED, 0 },  
+        old_size = { CONFIG_NAVBAR_OPEN, 0 },  
         mirror   = { true, false }, 
         design   = { background = .BG2 }, 
         border   = true,

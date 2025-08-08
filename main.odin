@@ -6,8 +6,10 @@ CONFIG_MAX_FPS               :: 60
 CONFIG_FONT_SIZE             :: 16 
 CONFIG_LARGE_FONT_SIZE       :: 24 
 CONFIG_SCROLLBAR_WIDTH       :: 15 
-CONFIG_SEARCH_PANEL_CLOSED   :: 15 
-CONFIG_SEARCH_PANEL_OPEN     :: 400
+CONFIG_SIDEBAR_CLOSED        :: 15 
+CONFIG_SIDEBAR_OPEN          :: 300
+CONFIG_NAVBAR_CLOSED         :: 15 
+CONFIG_NAVBAR_OPEN           :: 200
 CONFIG_TAB_WIDTH             :: 32 
 CONFIG_SEARCH_METHOD_WIDTH   :: 96 
 CONFIG_EMPTY_TAB_NAME        :: "empty tab"
@@ -20,23 +22,23 @@ CONFIG_CACHING_DO_SERIALLY   :: false // very slow, but does not choke the machi
 
 
 // almost all are untested: good luck!
-// WIN10   = { "open",     "{FILE}"         }, 
-// LINUX   = { "xdg-open", "{FILE}"         }, 
-// MACOS   = { "open",     "-t",   "{FILE}" },
-// NVIM    = { "nvim",        "+{LINE}",        "{FILE}"                   },
-// EMACS   = { "emacsclient", "+{LINE}:0",      "{FILE}"                   },
-// VSCODE  = { "code",        "--goto",         "{FILE}:{LINE}:0"          },
-// SUBLIME = { "subl",        "{FILE}:{LINE}"                              },
-// CLION   = { "clion",       "--line",         "{LINE}",         "{FILE}" },
-// NPP     = { "notepad++",   "{FILE}",         "-n{LINE}"                 },
-// KATE    = { "kate",        "--line",         "{LINE}",         "{FILE}" },
-// ZED     = { "zed",         "{FILE}:{LINE}:0"                            },
-// HELIX   = { "hx",          "{FILE}:{LINE}"                              },
+// WIN10   = { "open", "{FILE}" }, 
+// LINUX   = { "xdg-open", "{FILE}" }, 
+// MACOS   = { "open", "-t", "{FILE}" },
+// NVIM    = { "alacritty", "-e", "nvim", "+{LINE}", "{FILE}" },
+// EMACS   = { "emacsclient", "+{LINE}:0", "{FILE}" },
+// VSCODE  = { "code", "--goto", "{FILE}:{LINE}:0" },
+// SUBLIME = { "subl", "{FILE}:{LINE}" },
+// CLION   = { "clion", "--line", "{LINE}", "{FILE}" },
+// NPP     = { "notepad++", "{FILE}", "-n{LINE}" },
+// KATE    = { "kate", "--line", "{LINE}", "{FILE}" },
+// ZED     = { "zed", "{FILE}:{LINE}:0" },
+// HELIX   = { "hx", "{FILE}:{LINE}" },
 // also, do not use double quotes for paths and etc. here " is the same as \"
-EDITOR_COMMAND: [] string = 
-    { "open",     "-t",   "{FILE}" } when ODIN_OS == .Darwin else
-    { "xdg-open", "{FILE}"         } when ODIN_OS == .Linux  else
-    { "open",     "{FILE}"         } 
+EDITOR_COMMAND: [] string = {  "alacritty", "-e", "nvim", "+{LINE}", "{FILE}" } 
+//     { "open",     "-t",   "{FILE}" } when ODIN_OS == .Darwin else
+//     { "xdg-open", "{FILE}"         } when ODIN_OS == .Linux  else
+//     { "open",     "{FILE}"         } 
 
 
 COLORS := [Palette] Color {
