@@ -35,10 +35,10 @@ CONFIG_CACHING_DO_SERIALLY   :: false // very slow, but does not choke the machi
 // ZED     = { "zed", "{FILE}:{LINE}:0" },
 // HELIX   = { "hx", "{FILE}:{LINE}" },
 // also, do not use double quotes for paths and etc. here " is the same as \"
-EDITOR_COMMAND: [] string = {  "alacritty", "-e", "nvim", "+{LINE}", "{FILE}" } 
-//     { "open",     "-t",   "{FILE}" } when ODIN_OS == .Darwin else
-//     { "xdg-open", "{FILE}"         } when ODIN_OS == .Linux  else
-//     { "open",     "{FILE}"         } 
+EDITOR_COMMAND: [] string =  
+    { "open",     "-t",   "{FILE}" } when ODIN_OS == .Darwin else
+    { "xdg-open", "{FILE}"         } when ODIN_OS == .Linux  else
+    { "open",     "{FILE}"         } 
 
 
 COLORS := [Palette] Color {
