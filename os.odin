@@ -58,15 +58,23 @@ cache_everything :: proc(progress: ^[2] int, finished: ^[dynamic] string) {
 
         destination := eat(filepath.rel(odin_root, source, alloc)) if in_root else cat({ "user@", filepath.base(source) }, alloc) 
 
+        encoded_destination := eat(strings.replace(strings.clone(destination), "/", "@", -1))
+        encoded_destination  = eat(strings.replace(encoded_destination, "\\", "@", -1))
+
         process_info: os.Process_Desc
         process_info.command = { 
             "odin", "doc", source, 
             "-doc-format", "-all-packages", // temp
-            fmt.aprintf("-out=./cache/%s", eat(strings.replace(strings.clone(destination), "/", "@", -1)), allocator = alloc) 
+            fmt.aprintf("-out=./cache/%s.odin-doc", encoded_destination, allocator = alloc) 
         }
 
         when CONFIG_CACHING_DO_SERIALLY {
-            state, _, _, _ := os.process_exec(process_info, alloc)
+            state, stdout, stderr, _ := os.process_exec(process_info, alloc)
+            for p in process_info.command {
+                fmt.print(p, "")
+            }; fmt.println()
+            fmt.println("stderr:", string(stderr))
+            fmt.println("stdout:", string(stdout))
         } else { // probably, this:
             process, err2 := os.process_start(process_info)
             proc_state, err3 := os.process_wait(process, CONFIG_CACHING_PKG_TIMEOUT)
