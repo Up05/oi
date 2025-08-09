@@ -2,7 +2,6 @@ package main
 
 import "core:fmt"
 import "core:slice"
-import "core:thread"
 import "core:strings"
 import os_old "core:os"
 import os "core:os/os2"
@@ -50,12 +49,19 @@ join_paths :: proc(paths: [] string) -> string {
 cache_everything :: proc(progress: ^[2] int, finished: ^[dynamic] string) {
     progress[1] = 200 + len(CACHE_DIRECTORIES) // more or less 203 packages, hard to be specific right now, cause doc-format
     alloc := make_arena()
+
     defer {
-        thread.pool_finish(&window.thread_pool)
+        p := &window.thread_pool
+        for { 
+            if window.thread_pool.num_waiting == 0 do break 
+            sleep(16) // 16 ms
+        }
         free_all(alloc)
     }
 
+
     cache_directory :: proc(source: string, odin_root: string, alloc: Allocator, progress: ^[2] int, finished: ^[dynamic] string) {
+
         if !os.is_directory(source) do return 
 
         in_root := strings.starts_with(source, odin_root)
@@ -100,7 +106,7 @@ cache_everything :: proc(progress: ^[2] int, finished: ^[dynamic] string) {
             odin_root: string, 
             alloc: Allocator, 
             progress: ^[2]int, 
-            finished: ^[dynamic]string
+            finished: ^[dynamic]string,
         }
 
         for file in files {
@@ -110,7 +116,7 @@ cache_everything :: proc(progress: ^[2] int, finished: ^[dynamic] string) {
                 odin_root = odin_root,
                 alloc = alloc,
                 progress = progress,
-                finished = finished
+                finished = finished,
             }
             do_async(proc(task: Task) {
                 data := cast(^CacheData) task.data
@@ -118,7 +124,6 @@ cache_everything :: proc(progress: ^[2] int, finished: ^[dynamic] string) {
             }, data = new_clone(data, alloc))
         }
         
-        // thread.pool_finish(&window.thread_pool)
     }
 
     set_correct_cwd()

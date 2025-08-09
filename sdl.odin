@@ -18,6 +18,7 @@ Key       ::  sdl.Keycode
 start_text_input :: sdl.StartTextInput
 stop_text_input  :: sdl.StopTextInput
 destroy_texture  :: sdl.DestroyTexture
+sleep            :: sdl.Delay
 
 // =======================================================================================
 // ================================ WINDOW SETUP & RESIZE ================================
@@ -35,7 +36,7 @@ next_frame_target: u32
 take_break :: proc() {
     now := sdl.GetTicks()
     breaktime := max(next_frame_target - now, 0)
-    if breaktime < 1000 do sdl.Delay(breaktime)
+    if breaktime < 1000 do sleep(breaktime)
 }
 
 EMBEDDED_FONTS: [] [] byte = {
@@ -163,10 +164,12 @@ recache :: proc() {// {{{
 
     append(&messages, Message {})
 
+    message.tex, message.size = render_text("Please restart 'oi' to see changes...", .MONO, .FG2)
+    append(&messages, message)
+
+
     prev_cache_at_frame := window.frames
     prev_cache_progress := 0
-
-    resume_requested_at := max(int)
 
     for !window.should_exit {
         poll_events()
@@ -202,8 +205,10 @@ recache :: proc() {// {{{
             pos.y += msg.size.y
         }
         
-        if resume && resume_requested_at == max(int) do resume_requested_at = window.frames
-        if window.frames - resume_requested_at > CONFIG_MAX_FPS * 4 do break
+        if resume { 
+            sleep(200)
+            break
+        }
 
         if prev_cache_progress != progress[0] do prev_cache_at_frame = window.frames
         prev_cache_progress = progress[0]
@@ -211,13 +216,8 @@ recache :: proc() {// {{{
 
     if mid_frame do begin_frame()
 
-    for message in messages {
-        destroy_texture(message.tex)
-    }
+    for message in messages { destroy_texture(message.tex) }
     delete(messages)
-    // clear(&done_packages)
-    // delete(done_packages)
-
     progress_metrics.the_recaching = {}
 }// }}}
 
