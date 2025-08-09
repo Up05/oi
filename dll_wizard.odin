@@ -90,7 +90,7 @@ just_kinda_deal_with_sdl_dlls :: proc() -> bool {
                 tried_auto = true
 
                 join :: filepath.join
-                sdl, _ := join({ get_odin_root(), "vendor\\sdl2" }, alloc)
+                sdl := join({ get_odin_root(), "vendor\\sdl2" }, alloc)
                 exe := exe_path
                 fmt.println(missing_libs)
                 if .SDL in missing_libs {
