@@ -45,12 +45,6 @@ EMBEDDED_FONTS: [] [] byte = {
 
 init_graphics :: proc() -> bool {
 
-    when ODIN_OS == .Windows { 
-        if !just_kinda_deal_with_sdl_dlls() {
-            return false
-        }
-    }
-
     assert( sdl.Init(sdl.INIT_VIDEO) >= 0, "Failed to initialize SDL!" )
     assert( sdl.CreateWindowAndRenderer(1280, 720, { .RESIZABLE, .SHOWN, .OPENGL if ODIN_OS != .Darwin else .METAL }, 
             &window.handle, &window.renderer) >= 0, "Failed to start program!" )
