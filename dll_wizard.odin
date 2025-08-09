@@ -94,22 +94,22 @@ just_kinda_deal_with_sdl_dlls :: proc() -> bool {
                 exe := exe_path
                 fmt.println(missing_libs)
                 if .SDL in missing_libs {
-                    src, _ := join({ sdl, "SDL2.dll" }, alloc)
-                    dst, _ := join({ exe, "SDL2.dll" }, alloc)
+                    src := join({ sdl, "SDL2.dll" }, alloc)
+                    dst := join({ exe, "SDL2.dll" }, alloc)
                     err := os.copy_file(dst, src)
                     if err == nil do success += { .SDL }
                     else do errors[.SDL] = fmt.aprint(err, allocator = alloc)
                 }
                 if .SDL_TTF in missing_libs {
-                    src, _ := join({ sdl, "ttf\\SDL2_ttf.dll" }, alloc)
-                    dst, _ := join({ exe, "SDL2_ttf.dll" }, alloc)
+                    src := join({ sdl, "ttf\\SDL2_ttf.dll" }, alloc)
+                    dst := join({ exe, "SDL2_ttf.dll" }, alloc)
                     err := os.copy_file(dst, src)
                     if err == nil do success += { .SDL_TTF }
                     else do errors[.SDL_TTF] = fmt.aprint(err, allocator = alloc)
                 }
                 if .SDL_IMAGE in missing_libs {
-                    src, _ := join({ sdl, "image\\SDL2_image.dll" }, alloc)
-                    dst, _ := join({ exe, "SDL2_image.dll" }, alloc)
+                    src := join({ sdl, "image\\SDL2_image.dll" }, alloc)
+                    dst := join({ exe, "SDL2_image.dll" }, alloc)
                     err := os.copy_file(dst, src)
                     if err == nil do success += { .SDL_IMAGE }
                     else do errors[.SDL_IMAGE] = fmt.aprint(err, allocator = alloc)

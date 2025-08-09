@@ -38,7 +38,14 @@ list_dir :: proc(path: string, allocator := context.temp_allocator) -> (files: [
     return file_list, err == nil
 }
 
-join_paths :: proc(paths: [] string) -> string { return filepath.join(paths, context.temp_allocator) }
+join_paths :: proc(paths: [] string) -> string { 
+    when ODIN_OS != .Windows {
+        value, _ := filepath.join(paths, context.temp_allocator) 
+        return value
+    } else {
+        return filepath.join(paths, context.temp_allocator) 
+    }
+}
 cache_everything :: proc(progress: ^[2] int, finished: ^[dynamic] string) {
     progress[1] = 200 + len(CACHE_DIRECTORIES) // more or less 203 packages, hard to be specific right now, cause doc-format
     alloc := make_arena()
