@@ -2,6 +2,7 @@ package main
 
 import "core:fmt"
 import "core:slice"
+import "core:thread"
 import "core:strings"
 import os_old "core:os"
 import os "core:os/os2"
@@ -49,7 +50,10 @@ join_paths :: proc(paths: [] string) -> string {
 cache_everything :: proc(progress: ^[2] int, finished: ^[dynamic] string) {
     progress[1] = 200 + len(CACHE_DIRECTORIES) // more or less 203 packages, hard to be specific right now, cause doc-format
     alloc := make_arena()
-    defer free_all(alloc)
+    defer {
+        thread.pool_finish(&window.thread_pool)
+        free_all(alloc)
+    }
 
     cache_directory :: proc(source: string, odin_root: string, alloc: Allocator, progress: ^[2] int, finished: ^[dynamic] string) {
         if !os.is_directory(source) do return 
@@ -68,16 +72,13 @@ cache_everything :: proc(progress: ^[2] int, finished: ^[dynamic] string) {
             fmt.aprintf("-out=./cache/%s.odin-doc", encoded_destination, allocator = alloc) 
         }
 
-        when CONFIG_CACHING_DO_SERIALLY {
-            state, stdout, stderr, _ := os.process_exec(process_info, alloc)
+        state, stdout, stderr, _ := os.process_exec(process_info, alloc)
+        when CONFIG_LISTEN_TO_CHILDREN { 
             for p in process_info.command {
                 fmt.print(p, "")
             }; fmt.println()
             fmt.println("stderr:", string(stderr))
             fmt.println("stdout:", string(stdout))
-        } else { // probably, this:
-            process, err2 := os.process_start(process_info)
-            proc_state, err3 := os.process_wait(process, CONFIG_CACHING_PKG_TIMEOUT)
         }
 
         files, err4 := os.read_all_directory_by_path(source, alloc)
@@ -93,10 +94,30 @@ cache_everything :: proc(progress: ^[2] int, finished: ^[dynamic] string) {
             append(finished, destination)
         }
 
+        CacheData :: struct {
+            source: string, 
+            odin_root: string, 
+            alloc: Allocator, 
+            progress: ^[2]int, 
+            finished: ^[dynamic]string
+        }
+
         for file in files {
             if file.type != .Directory do continue
-            cache_directory(file.fullpath, odin_root, alloc, progress, finished)
+            data: CacheData = {
+                source = file.fullpath,
+                odin_root = odin_root,
+                alloc = alloc,
+                progress = progress,
+                finished = finished
+            }
+            do_async(proc(task: Task) {
+                data := cast(^CacheData) task.data
+                cache_directory(data.source, data.odin_root, data.alloc, data.progress, data.finished)
+            }, data = new_clone(data, alloc))
         }
+        
+        // thread.pool_finish(&window.thread_pool)
     }
 
     set_correct_cwd()

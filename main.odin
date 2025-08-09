@@ -17,9 +17,7 @@ CONFIG_CURSOR_REFRESH_RATE   :: CONFIG_MAX_FPS // = 1s
 CONFIG_CODE_LINE_SPACING     :: 2
 CONFIG_WHAT_IS_LONG_PROC     :: 50    // chars
 CONFIG_SET_CHILDREN_STRAIGHT :: true  // whether ':' aligned in structs
-CONFIG_CACHING_PKG_TIMEOUT   :: 7500  // fast, but may create ~200 processes, each "pinning" core
-CONFIG_CACHING_DO_SERIALLY   :: false // very slow, but does not choke the machine
-
+CONFIG_LISTEN_TO_CHILDREN    :: false // whether stdout and stderr should be inherited from `odin.exe doc ...`
 
 // almost all are untested: good luck!
 // WIN10   = { "open", "{FILE}" }, 
