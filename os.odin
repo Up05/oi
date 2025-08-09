@@ -51,10 +51,9 @@ cache_everything :: proc(progress: ^[2] int, finished: ^[dynamic] string) {
     alloc := make_arena()
 
     defer {
-        p := &window.thread_pool
         for { 
+            sleep(16) // 16 ms (do not put this after 'if')
             if window.thread_pool.num_waiting == 0 do break 
-            sleep(16) // 16 ms
         }
         free_all(alloc)
     }
