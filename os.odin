@@ -79,6 +79,7 @@ cache_everything :: proc(progress: ^[2] int, finished: ^[dynamic] string) {
             }; fmt.println()
             fmt.println("stderr:", string(stderr))
             fmt.println("stdout:", string(stdout))
+            fmt.println("------------------------------------")
         }
 
         files, err4 := os.read_all_directory_by_path(source, alloc)

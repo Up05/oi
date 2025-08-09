@@ -11,6 +11,27 @@ rune_size :: utf8.rune_size
 // ==============================   BOX UTILITY PROCS   =============================
 // ==================================================================================
 
+rerender_all_codeblocks :: proc() {
+    // RenderTarget textures get reset sometimes without openGL
+    // (or with my openGL drivers... I guess...)
+    set_box :: proc(box: ^Box) {
+        if box.type == .CODE {
+            box.rendered = false
+            box.render_scheduled = false
+            if box.tex != nil {
+                destroy_texture(box.tex)
+            }
+            box.tex = nil
+        }
+        for child in box.children {
+            set_box(child)
+        }
+    }
+    for &tab in window.tabs {
+        set_box(&tab)   
+    }
+}
+
 box_list :: proc(allocator: Allocator) -> [dynamic] ^Box {// {{{
     return make([dynamic] ^Box, allocator = allocator)
 }// }}}

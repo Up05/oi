@@ -70,6 +70,7 @@ poll_events :: proc() {
 
     for sdl.PollEvent(&event) {
         #partial switch event.type {
+        case .RENDER_TARGETS_RESET: rerender_all_codeblocks()
         case .QUIT:         window.should_exit = true
         case .WINDOWEVENT:  if event.window.event == .RESIZED  { handle_resize() }
         case .MOUSEWHEEL:   window.events.scroll = { event.wheel.x, event.wheel.y }
