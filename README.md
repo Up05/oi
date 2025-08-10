@@ -1,10 +1,10 @@
-# Oi!
-
-oi (odin index) is a documentation viewer for the Odin programming language.
+oi (odin index) is a native, keyboard-driven documentation viewer for the Odin programming language.
 
 https://github.com/user-attachments/assets/8f393445-5f31-46b0-8dfc-c47625bbd544
+
  
 It is an alternative to the [pkg.odin-lang.org](https://pkg.odin-lang.org) website, that I started, because:
+
 1. The site was too slow on my laptop :(. 
 2. I dislike the fuzzy, scattered matching
 3. I eventually found myself just typing out the entire:  
@@ -12,6 +12,7 @@ It is an alternative to the [pkg.odin-lang.org](https://pkg.odin-lang.org) websi
 4. also there still is no os/os2 there and I can never find where laytan's HTTP library docs are...
 
 And now:
+
 1. Well, I went outside and my kernel borked, but I do use SDL with heavy culling of UI elements (and lazy text rendering)
 2. There are a bunch of search methods, (default: "dotstar" -- `strings.contains` + only `.*` from regex)
 3. `Ctrl + T` to open packages (almost all packages have unique names after 3-4 letters, so why bother typing "core/")
@@ -20,7 +21,11 @@ And now:
 
 # Installation
 
-Careful with SDL... I haven't yet tried to link it statically and on Windows, I guess, you need dlls next to executable...
+Works on Linux and Windows, although, unfortunately, not really tested on MacOS (time estimate has only ever increased...)
+
+On Windows: 
+Please keep SDL2\*.dll files next to the executable
+
 The Odin compiler has to be in your `PATH` to generate the `oi.exe directory/cache`
 
 ```
@@ -32,8 +37,10 @@ Could use for "release": `odin build . -o:speed`
 # Configuration
 
 The program is configured through source code. 
-Entire configuration may be found in the `main.odin`.
-Simply edit it and rebuild -> reinstall/add to `PATH`
+
+Entire configuration may be found in the `main.odin`. Simply edit it and rebuild.
+
+
 
 This is only somewhat inspired by suckless software, since
 there is no patching, and I haven't figured out how to properly do source code config
