@@ -40,11 +40,11 @@ The program is configured through source code.
 
 Entire configuration may be found in the `main.odin`. Simply edit it and rebuild.
 
-
+<img width="1920" height="1040" alt="image" src="https://github.com/user-attachments/assets/a582123c-aa15-45e6-a444-221556fb4a7b" />
 
 This is only somewhat inspired by suckless software, since
 there is no patching, and I haven't figured out how to properly do source code config
-without the user having to merge their sh\*t or copy-paste onto updated sources main.odin.  
+without the user having to merge their sh\*t or copy-paste onto updated sources. 
 Sorry...
 
 # Contributing
