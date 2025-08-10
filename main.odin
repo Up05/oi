@@ -18,6 +18,8 @@ CONFIG_CODE_LINE_SPACING     :: 2
 CONFIG_WHAT_IS_LONG_PROC     :: 50    // chars
 CONFIG_SET_CHILDREN_STRAIGHT :: true  // whether ':' aligned in structs
 CONFIG_LISTEN_TO_CHILDREN    :: false // whether stdout and stderr should be inherited from `odin.exe doc ...`
+CONFIG_SCROLL_SPEED          :: 25
+CONFIG_SCROLL_SPEED_MAINTAIN :: 0.85
 
 // almost all are untested: good luck!
 // WIN10   = { "open", "{FILE}" }, 

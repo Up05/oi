@@ -61,13 +61,15 @@ on_click :: proc(box: ^Box) {// {{{
 }// }}}
 
 handle_scrollbar :: proc(box: ^Box) {// {{{
-    if box.scroll.pos.y < -15 { fmt.printfln("Scrolled %d pixels, don't make scroll negative!", box.scroll.pos.y) }
+    if box.scroll.pos.y < -CONFIG_SCROLL_SPEED { 
+        fmt.printfln("Scrolled %d pixels, don't make scroll negative!", box.scroll.pos.y) 
+    }
 
     s := window.events.scroll
     if s.x != 0 || s.y != 0 {
         // s.x  = 1 * shift
         // s.y *= !shift
-        get_parent_of_type(box, .CONTAINER).scroll.vel += [2]f32 { f32(s.x), f32(s.y) } * 15
+        get_parent_of_type(box, .CONTAINER).scroll.vel += [2]f32 { f32(s.x), f32(s.y) } * CONFIG_SCROLL_SPEED
     }
 
     if window.dragged_scrollbar != nil { apply_scroll_dragging(window.dragged_scrollbar) }
@@ -77,7 +79,7 @@ apply_scroll_velocity :: proc(box: ^Box) {// {{{
     box.scroll.pos += { i32(box.scroll.vel.x), -i32(box.scroll.vel.y) }
     box.scroll.pos.x = min(box.scroll.pos.x, 0)
     box.scroll.pos.y = max(box.scroll.pos.y, 0)
-    box.scroll.vel *= 0.8
+    box.scroll.vel *= CONFIG_SCROLL_SPEED_MAINTAIN // 0..<1
 }// }}}
 
 apply_scroll_dragging :: proc(box: ^Box) {// {{{
