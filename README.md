@@ -44,7 +44,7 @@ Entire configuration may be found in the `main.odin`. Simply edit it and rebuild
 
 This is only somewhat inspired by suckless software, since
 there is no patching, and I haven't figured out how to properly do source code config
-without the user having to merge their sh\*t or copy-paste onto updated sources main.odin.  
+without the user having to merge their sh\*t or copy-paste onto updated sources. 
 Sorry...
 
 # Contributing
