@@ -5,22 +5,29 @@ current_tab :: proc() -> ^Tab {
     return &window.tabs[window.current_tab]
 }
 
-switch_tabs :: proc(index: int) {
+switch_tabs :: proc(index: int, ignore_old_tab := false) {
     if index < 0 || index >= len(window.tabs) do return
     old_tab := current_tab()
     window.current_tab = index
+
     window.root.children[0] = &current_tab().box
     window.boxes.content = window.root.children[0]
-    window.should_relayout = true
     window.boxes.content.scroll = current_tab().scroll
-    window.hot_boxes.active_toolbar_tab = current_tab().toolbar_box
+
+    if !ignore_old_tab do old_tab.search = window.boxes.navbar.children
     window.boxes.navbar.children = current_tab().search
+
+    window.hot_boxes.active_toolbar_tab = current_tab().toolbar_box
+
+    window.should_relayout = true
 }
 
 new_tab :: proc(name: string) {
 
     tab: Tab
     tab_index: int
+
+    tab.search = make([dynamic] ^Box, tab.allocator)
 
     tab.box = {
         type   = .CONTAINER,
@@ -33,7 +40,6 @@ new_tab :: proc(name: string) {
 
         tab.allocator = make_arena()
         tab.is_empty = name == CONFIG_EMPTY_TAB_NAME
-        window.current_tab = len(window.tabs)
         tab_index = len(window.tabs)
 
         template: Box = {
@@ -53,7 +59,7 @@ new_tab :: proc(name: string) {
 
         tab.toolbar_box = append_box(window.boxes.toolbar, template, { text = name }) 
         append(&window.tabs, tab)
-        tab.toolbar_box.userdata = current_tab()
+        tab.toolbar_box.userdata = &window.tabs[len(window.tabs) - 1]
 
         switch_tabs(tab_index)
         init_box(window.boxes.content, &window.root)
@@ -79,8 +85,9 @@ close_tab :: proc(tab_index: int, caller := #caller_location) {
 
         clear(&old_tab.box_table)
         clear(&old_tab.cache_queue)
-        clear_box(old_tab)
         for box in old_tab.search { clear_box(box) }
+        clear_box(old_tab)
+        clear(&window.boxes.navbar.children)
 
         for box, i in window.boxes.toolbar.children {
             if box == old_tab.toolbar_box {
@@ -101,7 +108,7 @@ close_tab :: proc(tab_index: int, caller := #caller_location) {
     if window.current_tab >= len(window.tabs) {
         window.current_tab -= 1
     }
-    switch_tabs(window.current_tab)
+    switch_tabs(window.current_tab, ignore_old_tab = true)
     window.should_relayout = true
 }
 

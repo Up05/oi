@@ -115,8 +115,6 @@ box_collapse_handler :: proc(target: ^Box) {// {{{
 }// }}}
 
 search_click_handler :: proc(target: ^Box) {// {{{
-    fmt.println("SEARCH CLICKED")
-
     if window.events.click == .LEFT {
         window.active_input = target
     }
@@ -129,9 +127,8 @@ search_click_handler :: proc(target: ^Box) {// {{{
                 userdata = transmute(rawptr) u64(method), 
                 click    = proc(item: ^Box) {
                     item.target.method = auto_cast (transmute(u64) item.userdata)
-                    fmt.println("SEARCH METHOD:", item.target.method)
                 }
-        }
+            }
         }
         make_context_menu(target, (cast([^] Box) &boxes)[:len(boxes)])
     }
@@ -259,7 +256,6 @@ nexus_result_click_event_handler :: proc(target: ^Box) {// {{{
 search_submit_handler :: proc(search: ^Box) {// {{{
     tab := current_tab()
     if tab.is_empty do return
-    clear(&tab.search)
 
     query := strings.to_string(search.buffer)
     result: [dynamic] ^docl.Entity 
@@ -274,8 +270,8 @@ search_submit_handler :: proc(search: ^Box) {// {{{
     
     if len(result) == 0 do return
     
-    slice.sort_by(result[:], proc(a, b: ^docl.Entity) -> bool {
-        return a.kind < b.kind if a.kind != b.kind else a.name < b.name
+    slice.stable_sort_by(result[:], proc(a, b: ^docl.Entity) -> bool {
+        return a.kind < b.kind
     })
 
     template := Box { 
@@ -288,6 +284,7 @@ search_submit_handler :: proc(search: ^Box) {// {{{
     }
 
     result_box := window.boxes.navbar 
+    clear(&result_box.children)
 
     // cba to import doc-format
     prev_kind := result[len(result) - 1].kind
@@ -296,19 +293,20 @@ search_submit_handler :: proc(search: ^Box) {// {{{
         
         if prev_kind != entity.kind {
             #partial switch entity.kind {
-            case .Procedure: append_box(result_box, template, { font = .LARGE, text = "Procedures", })
-            case .Type_Name: append_box(result_box, template, { font = .LARGE, text = "Types",      })
-            case .Constant:  append_box(result_box, template, { font = .LARGE, text = "Constants",  })
-            case .Variable:  append_box(result_box, template, { font = .LARGE, text = "Variables",  })
+            case .Procedure: box := append_box(result_box, template, { font = .LARGE, text = "Procedures", })
+            case .Type_Name: box := append_box(result_box, template, { font = .LARGE, text = "Types",      })
+            case .Constant:  box := append_box(result_box, template, { font = .LARGE, text = "Constants",  })
+            case .Variable:  box := append_box(result_box, template, { font = .LARGE, text = "Variables",  })
             }
         }
 
         template.font = .MONO 
         box := append_box(result_box, template, { text = entity.name })
-        append(&tab.search, box)
 
         prev_kind = entity.kind
     }
+
+    tab.search = result_box.children
 
     tab.search_cursor = 0
     if len(tab.search) > 0 {
