@@ -259,7 +259,7 @@ nexus_result_click_event_handler :: proc(target: ^Box) {// {{{
 search_submit_handler :: proc(search: ^Box) {// {{{
     tab := current_tab()
     if tab.is_empty do return
-    clear_box(window.boxes.navbar)
+    clear(&tab.search)
 
     query := strings.to_string(search.buffer)
     result: [dynamic] ^docl.Entity 
@@ -301,17 +301,28 @@ search_submit_handler :: proc(search: ^Box) {// {{{
             case .Constant:  append_box(result_box, template, { font = .LARGE, text = "Constants",  })
             case .Variable:  append_box(result_box, template, { font = .LARGE, text = "Variables",  })
             }
-            prev_kind = entity.kind
         }
 
         template.font = .MONO 
         box := append_box(result_box, template, { text = entity.name })
         append(&tab.search, box)
+
+        prev_kind = entity.kind
     }
+
+    tab.search_cursor = 0
+    if len(tab.search) > 0 {
+        tab.search[0].background = tab.search[0].active_color   
+        anchor, ok := tab.box_table[tab.search[0].text]
+        if ok { scroll_to(window.boxes.content, anchor) }
+    }
+
 
     if window.boxes.navbar.min_size.x == CONFIG_NAVBAR_CLOSED {
         box_collapse_handler(window.boxes.navbar)
     }
+
+    window.should_relayout = true
 }// }}}
 
 search_result_click_handler :: proc(target: ^Box) {// {{{

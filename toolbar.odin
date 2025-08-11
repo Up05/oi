@@ -14,6 +14,7 @@ switch_tabs :: proc(index: int) {
     window.should_relayout = true
     window.boxes.content.scroll = current_tab().scroll
     window.hot_boxes.active_toolbar_tab = current_tab().toolbar_box
+    window.boxes.navbar.children = current_tab().search
 }
 
 new_tab :: proc(name: string) {

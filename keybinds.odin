@@ -32,6 +32,8 @@ kb_goto_next_result :: proc() {// {{{
     if tab == nil do return
     if len(tab.search) == 0 do return
 
+    tab.search_cursor += 1
+    tab.search_cursor = max(tab.search_cursor, 0) % len(tab.search)
     if tab.search[tab.search_cursor].font == .LARGE do tab.search_cursor += 1
     tab.search_cursor = max(tab.search_cursor, 0) % len(tab.search)
 
@@ -41,9 +43,6 @@ kb_goto_next_result :: proc() {// {{{
 
     for box in tab.search { box.background = .TRANSPARENT }
     target.background = target.active_color   
-
-    tab.search_cursor += 1
-    tab.search_cursor = max(tab.search_cursor, 0) % len(tab.search)
 }// }}}
 
 kb_goto_prev_result :: proc() {// {{{
@@ -51,9 +50,10 @@ kb_goto_prev_result :: proc() {// {{{
     if tab == nil do return
     if len(tab.search) == 0 do return
 
+    tab.search_cursor -= 1
+    if tab.search_cursor < 0 do tab.search_cursor = len(tab.search) - 1
     if tab.search[tab.search_cursor].font == .LARGE do tab.search_cursor -= 1
     if tab.search_cursor < 0 do tab.search_cursor = len(tab.search) - 1
-
 
     target := tab.search[tab.search_cursor]
     anchor, ok := tab.box_table[target.text]
@@ -61,9 +61,6 @@ kb_goto_prev_result :: proc() {// {{{
 
     for box in tab.search { box.background = .TRANSPARENT }
     target.background = target.active_color   
-
-    tab.search_cursor -= 1
-    if tab.search_cursor < 0 do tab.search_cursor = len(tab.search) - 1
 
 }// }}}
 
@@ -79,9 +76,7 @@ kb_toggle_debug_menu :: proc() {// {{{
     debug.show = !debug.show
 }// }}}
 
-kb_recache_everything :: proc() {
-    recache()
-}
+kb_recache_everything :: proc() { recache() }
 
 kb_open_nexus   :: proc() { open_module_by_name("nexus") }
 kb_open_raylib  :: proc() { open_module_by_name("raylib") }
