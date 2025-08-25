@@ -233,6 +233,11 @@ render_code_block :: proc(box: ^Box) {
     if box.min_size == box.tex_size { box.min_size = the_text_size }
     box.tex_size = the_text_size
 
+    if !CONFIG_SYNTAX_HIGHLIGHTING {
+        box.tex = the_text
+        return
+    }
+
     box.tex = sdl.CreateTexture(window.renderer, .ARGB8888, .TARGET, the_text_size.x, the_text_size.y)
     handle_premultiplied_alpha_compositing(box.tex)
     sdl.SetRenderTarget(window.renderer, box.tex)
