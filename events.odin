@@ -76,8 +76,8 @@ handle_scrollbar :: proc(box: ^Box) {// {{{
 } // }}}
 
 apply_scroll_velocity :: proc(box: ^Box) {// {{{
-    box.scroll.pos += { i32(box.scroll.vel.x), -i32(box.scroll.vel.y) }
-    box.scroll.pos.x = min(box.scroll.pos.x, 0)
+    box.scroll.pos += { i32(box.scroll.vel.x)/2, -i32(box.scroll.vel.y) }
+    box.scroll.pos.x = max(box.scroll.pos.x, 0)
     box.scroll.pos.y = max(box.scroll.pos.y, 0)
     box.scroll.vel *= CONFIG_SCROLL_SPEED_MAINTAIN // 0..<1
 }// }}}
