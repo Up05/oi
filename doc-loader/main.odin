@@ -28,7 +28,7 @@ package doc_loader
 // import "core:fmt"
 import "core:strings"
 import doc "core:odin/doc-format"
-import os "core:os/os2"
+import "core:os"
 import "core:mem/virtual"
 
 Entity_Kind :: doc.Entity_Kind

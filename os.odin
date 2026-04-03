@@ -3,8 +3,7 @@ package main
 import "core:fmt"
 import "core:slice"
 import "core:strings"
-import os_old "core:os"
-import os "core:os/os2"
+import "core:os"
 import "core:path/filepath"
 
 File_Info :: os.File_Info

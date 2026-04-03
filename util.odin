@@ -138,7 +138,7 @@ brighten :: proc(color: Color, percent: f32) -> Color {
 }
 
 // convert hex to [4] u8 (actually sdl.Color)
-rgba :: proc(hex: u32) -> Color {
+rgba :: proc "contextless" ($hex: u32) -> Color {
     r : u8 = u8( (hex & 0xFF000000) >> 24 )
     g : u8 = u8( (hex & 0x00FF0000) >> 16 )
     b : u8 = u8( (hex & 0x0000FF00) >>  8 )

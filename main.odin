@@ -15,7 +15,7 @@ CONFIG_SEARCH_METHOD_WIDTH   :: 96
 CONFIG_EMPTY_TAB_NAME        :: "empty tab"
 CONFIG_CURSOR_REFRESH_RATE   :: CONFIG_MAX_FPS // = 1s 
 CONFIG_CODE_LINE_SPACING     :: 2
-CONFIG_SYNTAX_HIGHLIGHTING   :: true  // also disables links... (exists for compatibility)
+CONFIG_SYNTAX_HIGHLIGHTING   :: false // also disables links... (exists for compatibility)
 CONFIG_WHAT_IS_LONG_PROC     :: 50    // chars
 CONFIG_SET_CHILDREN_STRAIGHT :: true  // whether ':' aligned in structs
 CONFIG_LISTEN_TO_CHILDREN    :: false // whether stdout and stderr should be inherited from `odin.exe doc ...`
@@ -36,10 +36,10 @@ CONFIG_SCROLL_SPEED_MAINTAIN :: 0.85
 // ZED     = { "zed", "{FILE}:{LINE}:0" },
 // HELIX   = { "hx", "{FILE}:{LINE}" },
 // also, do not use double quotes for paths and etc. here " is the same as \"
-EDITOR_COMMAND: [] string =  
-    { "open",     "-t",   "{FILE}" } when ODIN_OS == .Darwin else
-    { "xdg-open", "{FILE}"         } when ODIN_OS == .Linux  else
-    { "open",     "{FILE}"         } 
+EDITOR_COMMAND: [] string =  { "alacritty", "-e", "nvim", "+{LINE}", "{FILE}" }
+//  { "open",     "-t",   "{FILE}" } when ODIN_OS == .Darwin else
+//  { "xdg-open", "{FILE}"         } when ODIN_OS == .Linux  else
+//  { "open",     "{FILE}"         } 
 
 
 COLORS := [Palette] Color {
