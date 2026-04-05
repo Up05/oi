@@ -88,7 +88,7 @@ KEYBINDS := [] Bind {
     { key = .N, mods = { .ALT },  func = kb_open_nexus,   name = "Open nexus" },
     { key = .R, mods = { .ALT },  func = kb_open_raylib,  name = "Open raylib" },
     { key = .V, mods = { .ALT },  func = kb_open_vulkan,  name = "Open vulkan" },
-    { key = .O, mods = { .ALT },  func = kb_open_os2,     name = "Open os2" },
+    { key = .O, mods = { .ALT },  func = kb_open_os,      name = "Open os" },
     { key = .S, mods = { .ALT },  func = kb_open_strings, name = "Open strings" },
     { key = .M, mods = { .ALT },  func = kb_open_math,    name = "Open math" },
     { key = .L, mods = { .ALT },  func = kb_open_linalg,  name = "Open linalg" },

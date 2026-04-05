@@ -181,7 +181,7 @@ recache :: proc() {// {{{
         progress := progress_metrics.the_recaching
 
         resume: bool
-        resume |= window.frames - prev_cache_at_frame > CONFIG_MAX_FPS * 2
+        // resume |= window.frames - prev_cache_at_frame > CONFIG_MAX_FPS * 2
         resume |= progress[0] >= progress[1] 
 
         draw_rectangle({ 0, 0 }, window.size, .BG3)

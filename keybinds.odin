@@ -81,7 +81,7 @@ kb_recache_everything :: proc() { recache() }
 kb_open_nexus   :: proc() { open_module_by_name("nexus") }
 kb_open_raylib  :: proc() { open_module_by_name("raylib") }
 kb_open_vulkan  :: proc() { open_module_by_name("vulkan") }
-kb_open_os2     :: proc() { open_module_by_name("os2") }
+kb_open_os      :: proc() { open_module_by_name("os") }
 kb_open_strings :: proc() { open_module_by_name("strings") }
 kb_open_math    :: proc() { open_module_by_name("math") }
 kb_open_linalg  :: proc() { open_module_by_name("linalg") }

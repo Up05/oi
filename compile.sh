@@ -1,5 +1,4 @@
 #!/bin/sh
-odin run . -debug -linker:lld -o:none
-
-# odin run . -o:size   halves the exe size for me
+odin build . -debug -linker:mold -o:minimal && ./oi
+# odin build . -no-bounds-check -linker:mold -o:size && ./oi
 

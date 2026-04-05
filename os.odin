@@ -1,5 +1,6 @@
 package main
 
+import "base:intrinsics"
 import "core:fmt"
 import "core:slice"
 import "core:strings"
@@ -95,7 +96,7 @@ cache_everything :: proc(progress: ^[2] int, finished: ^[dynamic] string) {
             }
         }
         if has_odin_files {
-            progress[0] += 1
+            intrinsics.atomic_add(&progress[0], 1)
             append(finished, destination)
         }
 

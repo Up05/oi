@@ -49,7 +49,7 @@ view_in_editor :: proc(entity: ^Entity) {
 }
 
 start_main_thread_pool :: proc() {
-    thread.pool_init(&window.thread_pool, permanent, 3) 
+    thread.pool_init(&window.thread_pool, permanent, 2) 
     thread.pool_start(&window.thread_pool)
 }
 

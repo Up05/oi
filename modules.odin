@@ -74,7 +74,7 @@ open_odin_package :: proc(userdata: rawptr) {// {{{
 
     ok: bool
     current_tab().everything, ok = docl.load((transmute(^string) userdata)^, current_tab().allocator)
-    assert(ok)
+    fmt.assertf(ok, "Failed to open odin package at path: '%s'!", (transmute(^string) userdata)^)
 
     everything := &current_tab().everything
     tab := current_tab()
@@ -219,8 +219,6 @@ setup_sidebar :: proc(parent: ^Box) {// {{{
     })
     window.boxes.address = sidebar_search
 
-
-
     template := Box {
         type   = .LIST,
         font   = .REGULAR,
@@ -231,8 +229,7 @@ setup_sidebar :: proc(parent: ^Box) {// {{{
 
     append_box(parent, { text = "meta", font = .LARGE })
 
-    append_box(parent, template, { text = "nexus" })
-    
+    append_box(parent, template, { position = { 16, 0 }, text = "nexus" })
     append(&module_name_list, "nexus")
 
     file_details, ok := list_dir("cache")
@@ -244,48 +241,47 @@ setup_sidebar :: proc(parent: ^Box) {// {{{
     }
 
     slice.sort(file_names[:])
-    
-    last_category: string
 
-    prev_parent := parent
-    prev_levels : int
-    for file in file_names {
-        path := cat({ "cache/", file }, permanent)
-        template.userdata = new_clone(path, permanent)
-
-        file := file
-        if strings.ends_with(file, ".odin-doc") { 
-            file = file[:len(file) - len(".odin-doc")] 
-        }
+    prev_path: [32] string
+    stack: [dynamic] struct { level: int, text: string, path: string, real: bool };  defer delete(stack)
+    for path, i in file_names {
+        path := path
+        path  = strings.trim_suffix(path, ".odin-doc")
         
-        if category := strings.index(file, "@"); category != -1 {
-            if last_category != file[:category] {
-                append_box(parent, template, { 
-                    font = .LARGE, foreground = .FG1, 
-                    text = file[:category],
-                })
-                prev_parent = parent
+        levels_here := strings.count(path, "@") + 1
+        
+        path_copy := path
+        j := 0
+        for token in strings.split_iterator(&path_copy, "@") {
+            if prev_path[j] != token {
+                append(&stack, type_of(stack[0]) { level = j, text = token, 
+                                                   path  = file_names[i], 
+                                                   real  = j == levels_here - 1 })
             }
-            last_category = file[:category]
+            prev_path[j] = token
+            j += 1
         }
-
-        levels := strings.count(file, "@") - 1
-        
-        if levels > -1 {
-            file = file[strings.last_index(file, "@")+1:]
-        }
-        for level in 0..<max(prev_levels - levels, 0) {
-            if prev_parent.parent == nil do break
-            prev_parent = prev_parent.parent
-        }
-
-        prev_parent = append_box(parent, template, { 
-            position = { 16 * i32(levels), 0 }, 
-            text = file, 
-            hidden = strings.starts_with(file, "_")
-        })
-        prev_levels = levels
-        append(&module_name_list, strings.clone(file, permanent))
     }
+    
+    for element, i in stack {
 
+        if element.level == 0 {
+            append_box(parent, template, { 
+                font = .LARGE, foreground = .FG1, 
+                text = element.text,
+            })
+            continue
+        }
+
+        append_box(parent, template, { 
+            position   = { 16 * i32(element.level), 0 }, 
+            text       = element.text,
+            hidden     = strings.starts_with(element.text, "_"),
+            foreground = .FG1 if element.real else .FG4,
+            userdata   = new_clone(cat({ "cache/", element.path }, permanent), permanent),
+        })
+
+        append(&module_name_list, strings.clone(element.text, permanent))
+
+    }
 }// }}}
