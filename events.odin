@@ -68,7 +68,7 @@ handle_scrollbar :: proc(box: ^Box) {// {{{
 
     s := window.events.scroll
     if s.x != 0 || s.y != 0 {
-        // s.x  = 1 * shift
+        // s.x  = 1 * shift (fuck SDL)
         // s.y *= !shift
         get_parent_of_type(box, .CONTAINER).scroll.vel += [2]f32 { f32(s.x), f32(s.y) } * CONFIG_SCROLL_SPEED
     }
@@ -353,7 +353,6 @@ handle_keypress :: proc(base_event: Event) {// {{{
     if event.mod & { .LSHIFT, .RSHIFT } != {} do mods += { .SHIFT } 
     if event.mod & { .LALT, .RALT }     != {} do mods += { .ALT   }
     if event.mod & { .LGUI, .RGUI }     != {} do mods += { .SUPER } 
-
 
     for keybind in KEYBINDS {
         if keybind.key  == event.sym && keybind.mods == mods {

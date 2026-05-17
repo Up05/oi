@@ -74,7 +74,7 @@ poll_events :: proc() {
         case .RENDER_TARGETS_RESET: rerender_all_codeblocks()
         case .QUIT:         window.should_exit = true
         case .WINDOWEVENT:  if event.window.event == .RESIZED  { handle_resize() }
-        case .MOUSEWHEEL:   window.events.scroll = { event.wheel.x, event.wheel.y }
+        case .MOUSEWHEEL:   window.events.scroll = { -event.wheel.x, event.wheel.y }
         case .MOUSEBUTTONDOWN: 
             window.events.click = auto_cast event.button.button
             window.pressed      = auto_cast event.button.button

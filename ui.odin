@@ -72,7 +72,7 @@ get_first_child_of_type :: proc(box: ^Box, type: BoxType) -> ^Box {// {{{
 }   // }}}
 
 scroll_to :: proc(parent: ^Box, box: ^Box) {// {{{
-    parent.scroll.pos = box.cached_pos - { 0, parent.cached_pos.y }
+    parent.scroll.pos.y = box.cached_pos.y - parent.cached_pos.y
 }// }}}
 
 print_box_hierarchy :: proc(tree: ^Box, level := 0) {// {{{
